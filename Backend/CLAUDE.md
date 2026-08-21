@@ -28,6 +28,26 @@ secrets, docs layout).
   actively changing shape, add Alembic to that service before its next
   schema change, rather than continuing with ad hoc DDL.
 
+## Service layout: routes / controllers / models
+
+Every service (`AuthService/`, `PlayerService/`, and future services) follows
+the same three-folder layering under `app/`, rather than ad hoc structure
+per service:
+
+- `app/routes/<resource>.py` — `APIRouter` + path operations only. Wires
+  HTTP methods/paths to controller functions; stays thin (no business logic
+  inline).
+- `app/controllers/<resource>.py` — business logic. Routes call into these
+  functions; controllers use `app/models/` for persistence and
+  request/response shapes.
+- `app/models/<resource>.py` — data models (ORM/DB models and/or Pydantic
+  schemas), one module per resource rather than one catch-all file.
+
+Route and controller module names match by resource (e.g.
+`app/routes/auth.py` calls into `app/controllers/auth.py`). Apply this same
+layout when scaffolding `MatchmakingService`, `GameSessionService`, and
+`LeaderboardService`.
+
 ## Auth verification across services
 
 JWTs are stateless and signed with a shared secret — a service that needs
