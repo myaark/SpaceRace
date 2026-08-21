@@ -38,3 +38,6 @@ docker-compose.override.yml
 logs/
 
 docs/superpowers/
+
+# --- Git worktrees (agent workspace isolation) ---
+.worktrees/
