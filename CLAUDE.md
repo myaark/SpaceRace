@@ -23,6 +23,29 @@ applies across the whole repo.
   `docs:`, `refactor:`, `test:`. Scope is optional, free text.
 - Full detail in `CONTRIBUTING.md`.
 
+## Work isolation
+
+- Do not work on `Frontend/` and `Backend/` in the same task/session. Pick
+  one side and finish or pause it before switching.
+- Within `Backend/`, working across multiple services (e.g. `AuthService`
+  and `PlayerService`) in the same task is fine.
+
+## Repo structure changes
+
+- Never create a new top-level directory (a sibling of `Frontend/`,
+  `Backend/`, `scripts/`, etc.) without asking the user first.
+
+## Documentation
+
+- Docs live in a `docs/` folder unless a location is explicitly specified
+  otherwise. Both `Frontend/` and `Backend/` have their own `docs/` folder
+  (`Frontend/docs/`, `Backend/docs/`).
+- Frontend and backend ADRs (Architecture Decision Records) are maintained
+  separately: `Frontend/docs/adr/` and `Backend/docs/adr/`.
+- Per-service backend ADRs (e.g. for `AuthService`, `PlayerService`) also go
+  in `Backend/docs/adr/`, not inside the individual service folder — keep
+  all backend ADRs together in one place.
+
 ## Secrets & environment
 
 - Never create or commit a root-level `.env`. Each service owns its own
