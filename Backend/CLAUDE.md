@@ -28,6 +28,36 @@ secrets, docs layout).
   actively changing shape, add Alembic to that service before its next
   schema change, rather than continuing with ad hoc DDL.
 
+## Service layout: routes / controllers / models
+
+Every service (`AuthService/`, `PlayerService/`, and future services) follows
+the same three-folder layering under `app/`, rather than ad hoc structure
+per service:
+
+- `app/routes/<resource>.py` — `APIRouter` + path operations only. Wires
+  HTTP methods/paths to controller functions; stays thin (no business logic
+  inline).
+- `app/controllers/<resource>.py` — business logic. Routes call into these
+  functions; controllers use `app/models/` for persistence and
+  request/response shapes.
+- `app/models/<resource>.py` — data models (ORM/DB models and/or Pydantic
+  schemas), one module per resource rather than one catch-all file.
+
+Route and controller module names match by resource (e.g.
+`app/routes/auth.py` calls into `app/controllers/auth.py`). Apply this same
+layout when scaffolding `MatchmakingService`, `GameSessionService`, and
+`LeaderboardService`.
+
+## Data modeling conventions
+
+- Use enums instead of bools for status/state-like fields, in both
+  Pydantic request/response models and DB models. A two-state flag that
+  reads as a boolean today often needs a third state later (e.g.
+  `is_active: bool` → `AccountStatus.ACTIVE/SUSPENDED/DELETED`), and
+  starting with an enum avoids a breaking schema/migration change when
+  that happens. Applies to new fields going forward — not a mandate to
+  retrofit existing bool fields.
+
 ## Auth verification across services
 
 JWTs are stateless and signed with a shared secret — a service that needs

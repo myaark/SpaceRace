@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.config import settings
-from app.routers import auth
+from app.routes import auth
 
 app = FastAPI(title="Auth Service")
 

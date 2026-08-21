@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.config import settings
-from app.routers import players
+from app.routes import players
 
 app = FastAPI(title="Player Service")
 
