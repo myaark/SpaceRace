@@ -30,6 +30,13 @@ applies across the whole repo.
 - Within `Backend/`, working across multiple services (e.g. `AuthService`
   and `PlayerService`) in the same task is fine.
 
+## Git worktrees
+
+- Never use git worktrees for any purpose (feature isolation, parallel
+  agent workspaces, etc.) — not even via a worktree-based skill or an
+  agent tool's worktree isolation option. Work directly on branches
+  instead.
+
 ## Repo structure changes
 
 - Never create a new top-level directory (a sibling of `Frontend/`,

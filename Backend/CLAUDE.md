@@ -48,6 +48,16 @@ Route and controller module names match by resource (e.g.
 layout when scaffolding `MatchmakingService`, `GameSessionService`, and
 `LeaderboardService`.
 
+## Data modeling conventions
+
+- Use enums instead of bools for status/state-like fields, in both
+  Pydantic request/response models and DB models. A two-state flag that
+  reads as a boolean today often needs a third state later (e.g.
+  `is_active: bool` → `AccountStatus.ACTIVE/SUSPENDED/DELETED`), and
+  starting with an enum avoids a breaking schema/migration change when
+  that happens. Applies to new fields going forward — not a mandate to
+  retrofit existing bool fields.
+
 ## Auth verification across services
 
 JWTs are stateless and signed with a shared secret — a service that needs
