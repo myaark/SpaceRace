@@ -1,0 +1,68 @@
+# Root-level local-dev orchestration.
+#
+# Infra services (redis, postgres) are real. Each app service loads its own
+# env via `env_file`, not a shared root .env (see CONTRIBUTING.md).
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: spacerace
+      POSTGRES_PASSWORD: spacerace
+      POSTGRES_DB: spacerace
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  auth-service:
+    build: ./Backend/AuthService
+    env_file: ./Backend/AuthService/.env
+    depends_on: [postgres]
+    ports:
+      - "8001:8000"
+
+  player-service:
+    build: ./Backend/PlayerService
+    env_file: ./Backend/PlayerService/.env
+    depends_on: [postgres]
+    ports:
+      - "8002:8000"
+
+  matchmaking-service:
+    build: ./Backend/MatchmakingService
+    env_file: ./Backend/MatchmakingService/.env
+    depends_on: [redis]
+    ports:
+      - "8003:8000"
+
+  game-session-service:
+    build: ./Backend/GameSessionService
+    env_file: ./Backend/GameSessionService/.env
+    depends_on: [redis]
+    ports:
+      - "8004:8000"
+
+  leaderboard-service:
+    build: ./Backend/LeaderboardService
+    env_file: ./Backend/LeaderboardService/.env
+    depends_on: [postgres, redis]
+    ports:
+      - "8005:8000"
+
+  # frontend:
+  #   build: ./Frontend
+  #   env_file: ./Frontend/.env
+  #   ports:
+  #     - "5173:5173"
+
+volumes:
+  redis-data:
+  postgres-data:
