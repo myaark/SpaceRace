@@ -1,4 +1,6 @@
 import Phaser from 'phaser'
+import GameSocket from '../net/GameSocket.js'
+import RemoteShip from '../entities/RemoteShip.js'
 
 // Amber-phosphor palette, ported from the "Belt run HUD" design (variant 1a).
 const PALETTE = {
@@ -12,9 +14,6 @@ const PALETTE = {
   asteroidBorder: 0x645c50,
   salvageRing: 0xaebf92,
   hostileBox: 0xf6a06b,
-  ship: 0xf5ead8,
-  shipBorder: 0x56633f,
-  thruster: 0xf6a06b,
   tether: 0xc67139,
 }
 
@@ -23,10 +22,17 @@ const WORLD_H = 720
 
 // All three belt rings share one center, so only their upper-right arcs
 // sweep through the viewport — the planet reads as a close, zoomed-in limb.
+//
+// Must match Backend/GameSessionService/app/session.py's BELT_CENTER /
+// OUTER_FENCE_R / INNER_FENCE_R — there is no shared-schema mechanism
+// enforcing this, so keep the two in sync by hand.
 const BELT_CENTER = { x: -200, y: 1500 }
 const OUTER_FENCE_R = 1760
 const INNER_FENCE_R = 1420
 const PLANET_R = 1300
+
+// Fixed dev room — matchmaking isn't wired up yet (see design spec non-goals).
+const GAME_SESSION_WS_URL = 'ws://localhost:8000/ws/dev-room'
 
 const ASTEROIDS = [
   { x: 574, y: 262, r: 30, drift: true, period: 17000 },
@@ -59,7 +65,36 @@ export default class BeltScene extends Phaser.Scene {
     this.drawSalvageMarker()
     this.drawAsteroids()
     this.drawHostileMarker()
-    this.drawPlayerShip()
+
+    this.remoteShip = new RemoteShip(this, SHIP.x, SHIP.y)
+    this.gameSocket = new GameSocket(GAME_SESSION_WS_URL)
+    this.gameSocket.onState((msg) => this.remoteShip.applyState(msg.ship))
+
+    this.lastSentInput = { thrust: 0, turn: 0 }
+    this.cursors = this.input.keyboard.createCursorKeys()
+    this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D')
+  }
+
+  update() {
+    const thrust = this.readThrust()
+    const turn = this.readTurn()
+
+    if (thrust !== this.lastSentInput.thrust || turn !== this.lastSentInput.turn) {
+      this.lastSentInput = { thrust, turn }
+      this.gameSocket.sendInput({ thrust, turn })
+    }
+  }
+
+  readThrust() {
+    if (this.cursors.up.isDown || this.wasdKeys.W.isDown) return 1
+    if (this.cursors.down.isDown || this.wasdKeys.S.isDown) return -1
+    return 0
+  }
+
+  readTurn() {
+    if (this.cursors.left.isDown || this.wasdKeys.A.isDown) return -1
+    if (this.cursors.right.isDown || this.wasdKeys.D.isDown) return 1
+    return 0
   }
 
   drawBeltRings() {
@@ -201,23 +236,5 @@ export default class BeltScene extends Phaser.Scene {
       graphics.lineTo(x0 + ux * end, y0 + uy * end)
       graphics.strokePath()
     }
-  }
-
-  drawPlayerShip() {
-    const half = SHIP.size / 2
-
-    const thruster = this.add.graphics()
-    thruster.fillStyle(PALETTE.thruster, 1)
-    thruster.fillRoundedRect(-48, -5, 96, 10, 5)
-    thruster.setPosition(SHIP.x + 38, SHIP.y - 52)
-    thruster.setRotation(Phaser.Math.DegToRad(-52))
-
-    const hull = this.add.graphics()
-    hull.fillStyle(PALETTE.ship, 1)
-    hull.fillRoundedRect(-half, -half, SHIP.size, SHIP.size, 10)
-    hull.lineStyle(2, PALETTE.shipBorder, 1)
-    hull.strokeRoundedRect(-half, -half, SHIP.size, SHIP.size, 10)
-    hull.setPosition(SHIP.x, SHIP.y)
-    hull.setRotation(Phaser.Math.DegToRad(45))
   }
 }
