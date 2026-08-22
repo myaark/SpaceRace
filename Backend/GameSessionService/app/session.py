@@ -4,7 +4,7 @@ import pymunk
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from app.entities import SHIP_THRUST_FORCE, SHIP_TURN_RATE, Ship
+from app.entities import SHIP_MAX_SPEED, SHIP_THRUST_FORCE, SHIP_TURN_RATE, Ship
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,14 @@ BELT_CENTER = pymunk.Vec2d(-200, 1500)
 OUTER_FENCE_R = 1760.0
 INNER_FENCE_R = 1420.0
 
-SPACE_DAMPING = 0.98  # per-tick velocity decay so an unpowered ship coasts to rest
+# Offset from BELT_CENTER to Frontend/src/scenes/BeltScene.js's SHIP constant
+# (724, 318). The ship must spawn exactly here — it's the only point the
+# frontend draws before the first server state arrives, so any mismatch
+# makes the ship appear to teleport/disappear on the first broadcast.
+SPAWN_OFFSET = pymunk.Vec2d(924, -1182)
+
+# Fraction of velocity retained per second — unpowered ship stops in ~0.3s.
+SPACE_DAMPING = 0.0003
 
 
 class GameSession:
@@ -27,8 +34,7 @@ class GameSession:
         self.space.gravity = (0, 0)
         self.space.damping = SPACE_DAMPING
 
-        mid_radius = (INNER_FENCE_R + OUTER_FENCE_R) / 2
-        spawn = BELT_CENTER + pymunk.Vec2d(0, -mid_radius)
+        spawn = BELT_CENTER + SPAWN_OFFSET
         self.ship = Ship("ship-1", (spawn.x, spawn.y))
         self.space.add(self.ship.body, self.ship.shape)
 
@@ -63,6 +69,12 @@ class GameSession:
             )
         self.ship.body.angular_velocity = turn * SHIP_TURN_RATE
 
+    def _clamp_speed(self) -> None:
+        body = self.ship.body
+        speed = body.velocity.length
+        if speed > SHIP_MAX_SPEED:
+            body.velocity = body.velocity * (SHIP_MAX_SPEED / speed)
+
     def _clamp_to_belt(self) -> None:
         body = self.ship.body
         offset = body.position - BELT_CENTER
@@ -71,17 +83,23 @@ class GameSession:
         if INNER_FENCE_R <= distance <= OUTER_FENCE_R:
             return
 
-        clamped_distance = OUTER_FENCE_R if distance > OUTER_FENCE_R else INNER_FENCE_R
+        past_outer = distance > OUTER_FENCE_R
+        clamped_distance = OUTER_FENCE_R if past_outer else INNER_FENCE_R
         radial_dir = offset.normalized() if distance > 1e-6 else pymunk.Vec2d(1, 0)
 
         body.position = BELT_CENTER + radial_dir * clamped_distance
         radial_velocity = body.velocity.dot(radial_dir)
-        body.velocity = body.velocity - radial_dir * radial_velocity
+        # Only kill the component still pushing past this fence, so a ship
+        # that has reversed course back toward the belt isn't stuck there.
+        still_escaping = radial_velocity > 0 if past_outer else radial_velocity < 0
+        if still_escaping:
+            body.velocity = body.velocity - radial_dir * radial_velocity
 
     def step(self, dt: float) -> None:
         """Advance physics by one tick: apply input, integrate, enforce the belt boundary."""
         self._apply_input()
         self.space.step(dt)
+        self._clamp_speed()
         self._clamp_to_belt()
         self.tick_count += 1
 

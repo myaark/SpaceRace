@@ -4,6 +4,7 @@ SHIP_MASS = 1.0
 SHIP_RADIUS = 20.0
 SHIP_THRUST_FORCE = 400.0
 SHIP_TURN_RATE = 3.0  # radians/sec
+SHIP_MAX_SPEED = 90.0  # px/sec — deliberately low handling cap
 
 
 class Ship:

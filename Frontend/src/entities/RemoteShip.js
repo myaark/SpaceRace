@@ -31,7 +31,17 @@ export default class RemoteShip extends Phaser.GameObjects.Container {
     hull.strokeRoundedRect(-half, -half, SHIP_SIZE, SHIP_SIZE, 10)
     hull.setRotation(Phaser.Math.DegToRad(45))
 
-    this.add([thruster, hull])
+    // The thruster flame marks the ship's rear. The server applies thrust
+    // force along local +x (rotation 0) — see GameSessionService's
+    // session.py _apply_input — so rotate the whole art group here until
+    // the point opposite the thruster (the nose) lines up with local +x.
+    // That keeps "up" always visually matching the direction physics
+    // actually pushes the ship.
+    const art = scene.add.container(0, 0, [thruster, hull])
+    const noseAngle = Math.atan2(-52, 38) + Math.PI
+    art.setRotation(-noseAngle)
+
+    this.add(art)
   }
 
   applyState({ x, y, rotation }) {

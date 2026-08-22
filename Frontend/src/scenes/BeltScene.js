@@ -17,9 +17,6 @@ const PALETTE = {
   tether: 0xc67139,
 }
 
-const WORLD_W = 1280
-const WORLD_H = 720
-
 // All three belt rings share one center, so only their upper-right arcs
 // sweep through the viewport — the planet reads as a close, zoomed-in limb.
 //
@@ -49,6 +46,9 @@ const ASTEROIDS = [
 
 const SALVAGE = { x: 804, y: 385, r: 64 }
 const HOSTILE = { x: 627, y: 177, w: 70, h: 70 }
+// Must match Backend/GameSessionService's BELT_CENTER + SPAWN_OFFSET — the
+// server's first state broadcast places the ship here, so any mismatch
+// makes it appear to teleport away from this placeholder position.
 const SHIP = { x: 724, y: 318, size: 66 }
 const TETHER_END = { x: 601, y: 476 }
 
@@ -73,6 +73,22 @@ export default class BeltScene extends Phaser.Scene {
     this.lastSentInput = { thrust: 0, turn: 0 }
     this.cursors = this.input.keyboard.createCursorKeys()
     this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D')
+
+    this.setupCamera()
+  }
+
+  setupCamera() {
+    // Bounds cover the full belt ring so the camera can follow the ship
+    // anywhere it's physically allowed to go (see session.py's
+    // _clamp_to_belt, which clamps radially only — the ship can traverse
+    // the whole ring, not just this arc).
+    this.cameras.main.setBounds(
+      BELT_CENTER.x - OUTER_FENCE_R,
+      BELT_CENTER.y - OUTER_FENCE_R,
+      OUTER_FENCE_R * 2,
+      OUTER_FENCE_R * 2,
+    )
+    this.cameras.main.startFollow(this.remoteShip, true, 0.08, 0.08)
   }
 
   update() {
