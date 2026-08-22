@@ -1,10 +1,20 @@
 import logging
+import math
 
 import pymunk
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from app.entities import SHIP_MAX_SPEED, SHIP_THRUST_FORCE, SHIP_TURN_RATE, Ship
+from app.entities import (
+    ASTEROID_DEFS,
+    ASTEROID_DRIFT_FORCE,
+    ASTEROID_MAX_SPEED,
+    SHIP_MAX_SPEED,
+    SHIP_THRUST_FORCE,
+    SHIP_TURN_RATE,
+    Asteroid,
+    Ship,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +48,17 @@ class GameSession:
         self.ship = Ship("ship-1", (spawn.x, spawn.y))
         self.space.add(self.ship.body, self.ship.shape)
 
+        self.asteroids: dict[str, Asteroid] = {}
+        for asteroid_id, x, y, r, drift, period in ASTEROID_DEFS:
+            asteroid = Asteroid(asteroid_id, (x, y), r, drift, period)
+            self.space.add(asteroid.body, asteroid.shape)
+            self.asteroids[asteroid_id] = asteroid
+
         self.connections: set[WebSocket] = set()
         self.latest_input: dict[WebSocket, dict] = {}
         self._active_client: WebSocket | None = None
         self.tick_count = 0
+        self._elapsed_ms = 0.0
 
     def register(self, websocket: WebSocket) -> None:
         self.connections.add(websocket)
@@ -69,14 +86,12 @@ class GameSession:
             )
         self.ship.body.angular_velocity = turn * SHIP_TURN_RATE
 
-    def _clamp_speed(self) -> None:
-        body = self.ship.body
+    def _clamp_speed(self, body: pymunk.Body, max_speed: float) -> None:
         speed = body.velocity.length
-        if speed > SHIP_MAX_SPEED:
-            body.velocity = body.velocity * (SHIP_MAX_SPEED / speed)
+        if speed > max_speed:
+            body.velocity = body.velocity * (max_speed / speed)
 
-    def _clamp_to_belt(self) -> None:
-        body = self.ship.body
+    def _clamp_to_belt(self, body: pymunk.Body) -> None:
         offset = body.position - BELT_CENTER
         distance = offset.length
 
@@ -89,22 +104,47 @@ class GameSession:
 
         body.position = BELT_CENTER + radial_dir * clamped_distance
         radial_velocity = body.velocity.dot(radial_dir)
-        # Only kill the component still pushing past this fence, so a ship
+        # Only kill the component still pushing past this fence, so a body
         # that has reversed course back toward the belt isn't stuck there.
         still_escaping = radial_velocity > 0 if past_outer else radial_velocity < 0
         if still_escaping:
             body.velocity = body.velocity - radial_dir * radial_velocity
 
+    def _apply_drift(self) -> None:
+        """Small continuous sinusoidal force on drift=True asteroids — the
+        server-authoritative replacement for the frontend's old tween wobble."""
+        for index, asteroid in enumerate(self.asteroids.values()):
+            if not asteroid.drift:
+                continue
+            phase = index * (math.pi / 4)
+            angle = (2 * math.pi * self._elapsed_ms / asteroid.period) + phase
+            force = (
+                pymunk.Vec2d(math.cos(angle), math.sin(angle)) * ASTEROID_DRIFT_FORCE
+            )
+            asteroid.body.apply_force_at_local_point(force, (0, 0))
+
     def step(self, dt: float) -> None:
         """Advance physics by one tick: apply input, integrate, enforce the belt boundary."""
+        self._elapsed_ms += dt * 1000
         self._apply_input()
+        self._apply_drift()
         self.space.step(dt)
-        self._clamp_speed()
-        self._clamp_to_belt()
+
+        self._clamp_speed(self.ship.body, SHIP_MAX_SPEED)
+        self._clamp_to_belt(self.ship.body)
+        for asteroid in self.asteroids.values():
+            self._clamp_speed(asteroid.body, ASTEROID_MAX_SPEED)
+            self._clamp_to_belt(asteroid.body)
+
         self.tick_count += 1
 
     def to_broadcast_message(self) -> dict:
-        return {"type": "state", "tick": self.tick_count, "ship": self.ship.to_state()}
+        return {
+            "type": "state",
+            "tick": self.tick_count,
+            "ship": self.ship.to_state(),
+            "asteroids": [a.to_state() for a in self.asteroids.values()],
+        }
 
     async def broadcast(self) -> None:
         if not self.connections:

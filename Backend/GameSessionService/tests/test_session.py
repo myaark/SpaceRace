@@ -1,6 +1,7 @@
 import pymunk
 import pytest
 
+from app.entities import SHIP_RADIUS
 from app.session import (
     BELT_CENTER,
     INNER_FENCE_R,
@@ -11,6 +12,29 @@ from app.session import (
 )
 
 TICK_DT = 1 / 20
+
+
+def _run_head_on_collision(
+    asteroid_id: str, approach_speed: float, ticks: int = 5
+) -> float:
+    """Places the ship on contact with the named asteroid, moving straight at
+    it, steps a few ticks, and returns the ship's resulting speed change."""
+    session = GameSession("test-room")
+    target = session.asteroids[asteroid_id]
+    target.drift = False  # isolate the collision from the drift force
+
+    approach_dir = pymunk.Vec2d(1, 0)
+    contact_distance = (
+        target.radius + SHIP_RADIUS - 1
+    )  # slight overlap to force contact on tick 1
+    session.ship.body.position = target.body.position - approach_dir * contact_distance
+    session.ship.body.velocity = approach_dir * approach_speed
+    initial_vx = session.ship.body.velocity.x
+
+    for _ in range(ticks):
+        session.step(TICK_DT)
+
+    return abs(session.ship.body.velocity.x - initial_vx)
 
 
 @pytest.fixture
@@ -107,6 +131,45 @@ def test_speed_is_clamped_to_max(session: GameSession) -> None:
         session.step(TICK_DT)
 
     assert session.ship.body.velocity.length <= SHIP_MAX_SPEED + 1e-6
+
+
+def test_asteroids_spawn_at_frontend_positions(session: GameSession) -> None:
+    assert len(session.asteroids) == 10
+    ast_1 = session.asteroids["ast-1"]
+    assert ast_1.body.position.x == pytest.approx(574)
+    assert ast_1.body.position.y == pytest.approx(262)
+
+
+def test_asteroid_mass_scales_with_radius(session: GameSession) -> None:
+    small = session.asteroids["ast-2"]  # r=26
+    large = session.asteroids["ast-3"]  # r=44
+    assert large.body.mass > small.body.mass
+    assert large.body.mass == pytest.approx(small.body.mass * (44**2 / 26**2))
+
+
+def test_heavier_asteroid_causes_larger_ship_velocity_change() -> None:
+    """Elastic collision: a heavier asteroid reflects more of the ship's
+    incoming velocity than a lighter one, given the same approach speed —
+    "a large asteroid barely moves and deflects the ship hard, a small one
+    is easily pushed aside and barely affects the ship's course" (design
+    spec Goals)."""
+    approach_speed = 80
+
+    light_delta = _run_head_on_collision("ast-2", approach_speed)  # r=26
+    heavy_delta = _run_head_on_collision("ast-3", approach_speed)  # r=44
+
+    assert heavy_delta > light_delta
+
+
+def test_drifting_asteroids_stay_within_belt_annulus() -> None:
+    session = GameSession("test-room")
+
+    for _ in range(2000):
+        session.step(TICK_DT)
+
+    for asteroid in session.asteroids.values():
+        distance = (asteroid.body.position - BELT_CENTER).length
+        assert INNER_FENCE_R - 1e-6 <= distance <= OUTER_FENCE_R + 1e-6
 
 
 def test_ship_decays_to_rest_quickly_after_thrust_released(
