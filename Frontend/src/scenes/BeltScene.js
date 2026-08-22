@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import GameSocket from '../net/GameSocket.js'
 import RemoteShip from '../entities/RemoteShip.js'
+import RemoteAsteroid from '../entities/RemoteAsteroid.js'
 
 // Amber-phosphor palette, ported from the "Belt run HUD" design (variant 1a).
 const PALETTE = {
@@ -10,8 +11,6 @@ const PALETTE = {
   innerFence: 0xf6a06b,
   planetFill: 0xe8c887,
   planetBorder: 0xc67139,
-  asteroidFill: 0x17140f,
-  asteroidBorder: 0x645c50,
   salvageRing: 0xaebf92,
   hostileBox: 0xf6a06b,
   tether: 0xc67139,
@@ -31,17 +30,21 @@ const PLANET_R = 1300
 // Fixed dev room — matchmaking isn't wired up yet (see design spec non-goals).
 const GAME_SESSION_WS_URL = 'ws://localhost:8000/ws/dev-room'
 
+// Positions are placeholders shown before the first server state broadcast
+// arrives — same role the SHIP constant plays for the ship. Radius is a
+// frontend-only constant (never sent by the server, keyed by id). Must
+// match Backend/GameSessionService/app/entities.py's ASTEROID_DEFS.
 const ASTEROIDS = [
-  { x: 574, y: 262, r: 30, drift: true, period: 17000 },
-  { x: 835, y: 500, r: 26, drift: false },
-  { x: 981, y: 277, r: 44, drift: true, period: 23000 },
-  { x: 490, y: 202, r: 36, drift: false },
-  { x: 906, y: 182, r: 34, drift: true, period: 29000 },
-  { x: 798, y: 223, r: 28, drift: false },
-  { x: 804, y: 385, r: 48, drift: true, period: 19000 },
-  { x: 1063, y: 363, r: 40, drift: false },
-  { x: 966, y: 589, r: 32, drift: true, period: 21000 },
-  { x: 1123, y: 673, r: 26, drift: false },
+  { id: 'ast-1', x: 574, y: 262, r: 30 },
+  { id: 'ast-2', x: 835, y: 500, r: 26 },
+  { id: 'ast-3', x: 981, y: 277, r: 44 },
+  { id: 'ast-4', x: 490, y: 202, r: 36 },
+  { id: 'ast-5', x: 906, y: 182, r: 34 },
+  { id: 'ast-6', x: 798, y: 223, r: 28 },
+  { id: 'ast-7', x: 804, y: 385, r: 48 },
+  { id: 'ast-8', x: 1063, y: 363, r: 40 },
+  { id: 'ast-9', x: 966, y: 589, r: 32 },
+  { id: 'ast-10', x: 1123, y: 673, r: 26 },
 ]
 
 const SALVAGE = { x: 804, y: 385, r: 64 }
@@ -63,12 +66,20 @@ export default class BeltScene extends Phaser.Scene {
     this.drawBeltRings()
     this.drawTether()
     this.drawSalvageMarker()
-    this.drawAsteroids()
     this.drawHostileMarker()
+
+    this.remoteAsteroids = new Map(
+      ASTEROIDS.map((a) => [a.id, new RemoteAsteroid(this, a.x, a.y, a.r)]),
+    )
 
     this.remoteShip = new RemoteShip(this, SHIP.x, SHIP.y)
     this.gameSocket = new GameSocket(GAME_SESSION_WS_URL)
-    this.gameSocket.onState((msg) => this.remoteShip.applyState(msg.ship))
+    this.gameSocket.onState((msg) => {
+      this.remoteShip.applyState(msg.ship)
+      for (const asteroidState of msg.asteroids) {
+        this.remoteAsteroids.get(asteroidState.id)?.applyState(asteroidState)
+      }
+    })
 
     this.lastSentInput = { thrust: 0, turn: 0 }
     this.cursors = this.input.keyboard.createCursorKeys()
@@ -160,29 +171,6 @@ export default class BeltScene extends Phaser.Scene {
       graphics.beginPath()
       graphics.arc(cx, cy, radius, a0, a1, false)
       graphics.strokePath()
-    }
-  }
-
-  drawAsteroids() {
-    for (const a of ASTEROIDS) {
-      const g = this.add.graphics()
-      g.fillStyle(PALETTE.asteroidFill, 1)
-      g.fillCircle(0, 0, a.r)
-      g.lineStyle(1, PALETTE.asteroidBorder, 1)
-      g.strokeCircle(0, 0, a.r)
-      g.setPosition(a.x, a.y)
-
-      if (a.drift) {
-        this.tweens.add({
-          targets: g,
-          x: { from: a.x, to: a.x - 12 },
-          y: { from: a.y, to: a.y + 7 },
-          duration: a.period / 2,
-          ease: 'Sine.easeInOut',
-          yoyo: true,
-          repeat: -1,
-        })
-      }
     }
   }
 
