@@ -6,6 +6,7 @@ export default class GameSocket {
     this.url = url
     this.seq = 0
     this.stateHandlers = []
+    this.initHandlers = []
     this.retriesLeft = 1
     this.ws = null
     this._connect()
@@ -23,6 +24,8 @@ export default class GameSocket {
       }
       if (message.type === 'state') {
         for (const handler of this.stateHandlers) handler(message)
+      } else if (message.type === 'init') {
+        for (const handler of this.initHandlers) handler(message)
       }
     })
 
@@ -36,6 +39,10 @@ export default class GameSocket {
 
   onState(callback) {
     this.stateHandlers.push(callback)
+  }
+
+  onInit(callback) {
+    this.initHandlers.push(callback)
   }
 
   sendInput({ thrust, turn }) {

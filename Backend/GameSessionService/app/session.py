@@ -6,7 +6,6 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from app.entities import (
-    ASTEROID_DEFS,
     ASTEROID_DRIFT_FORCE,
     ASTEROID_MAX_SPEED,
     SHIP_MAX_SPEED,
@@ -14,6 +13,7 @@ from app.entities import (
     SHIP_TURN_RATE,
     Asteroid,
     Ship,
+    generate_asteroid_layout,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,8 +48,14 @@ class GameSession:
         self.ship = Ship("ship-1", (spawn.x, spawn.y))
         self.space.add(self.ship.body, self.ship.shape)
 
+        layout = generate_asteroid_layout(
+            (BELT_CENTER.x, BELT_CENTER.y),
+            INNER_FENCE_R,
+            OUTER_FENCE_R,
+            (spawn.x, spawn.y),
+        )
         self.asteroids: dict[str, Asteroid] = {}
-        for asteroid_id, x, y, r, drift, period in ASTEROID_DEFS:
+        for asteroid_id, x, y, r, drift, period in layout:
             asteroid = Asteroid(asteroid_id, (x, y), r, drift, period)
             self.space.add(asteroid.body, asteroid.shape)
             self.asteroids[asteroid_id] = asteroid
@@ -137,6 +143,23 @@ class GameSession:
             self._clamp_to_belt(asteroid.body)
 
         self.tick_count += 1
+
+    def to_init_message(self) -> dict:
+        """One-time layout message: asteroid radius never changes, but since
+        the layout is now server-generated (not a hand-copied frontend
+        constant), the client needs it sent explicitly on connect."""
+        return {
+            "type": "init",
+            "asteroids": [
+                {
+                    "id": a.id,
+                    "x": a.body.position.x,
+                    "y": a.body.position.y,
+                    "r": a.radius,
+                }
+                for a in self.asteroids.values()
+            ],
+        }
 
     def to_broadcast_message(self) -> dict:
         return {

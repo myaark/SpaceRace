@@ -133,18 +133,31 @@ def test_speed_is_clamped_to_max(session: GameSession) -> None:
     assert session.ship.body.velocity.length <= SHIP_MAX_SPEED + 1e-6
 
 
-def test_asteroids_spawn_at_frontend_positions(session: GameSession) -> None:
-    assert len(session.asteroids) == 10
-    ast_1 = session.asteroids["ast-1"]
-    assert ast_1.body.position.x == pytest.approx(574)
-    assert ast_1.body.position.y == pytest.approx(262)
+def test_asteroids_spawn_within_belt_annulus(session: GameSession) -> None:
+    assert len(session.asteroids) == 45
+    for asteroid in session.asteroids.values():
+        distance = (asteroid.body.position - BELT_CENTER).length
+        assert INNER_FENCE_R - 1e-6 <= distance <= OUTER_FENCE_R + 1e-6
+
+
+def test_asteroids_do_not_overlap_each_other_or_the_ship(
+    session: GameSession,
+) -> None:
+    bodies = [(a.body.position, a.radius) for a in session.asteroids.values()]
+    bodies.append((session.ship.body.position, SHIP_RADIUS))
+
+    for i, (pos_a, r_a) in enumerate(bodies):
+        for pos_b, r_b in bodies[i + 1 :]:
+            assert (pos_a - pos_b).length >= r_a + r_b - 1e-6
 
 
 def test_asteroid_mass_scales_with_radius(session: GameSession) -> None:
-    small = session.asteroids["ast-2"]  # r=26
-    large = session.asteroids["ast-3"]  # r=44
+    asteroids = sorted(session.asteroids.values(), key=lambda a: a.radius)
+    small, large = asteroids[0], asteroids[-1]
     assert large.body.mass > small.body.mass
-    assert large.body.mass == pytest.approx(small.body.mass * (44**2 / 26**2))
+    assert large.body.mass == pytest.approx(
+        small.body.mass * (large.radius**2 / small.radius**2)
+    )
 
 
 def test_heavier_asteroid_causes_larger_ship_velocity_change() -> None:
@@ -154,9 +167,12 @@ def test_heavier_asteroid_causes_larger_ship_velocity_change() -> None:
     is easily pushed aside and barely affects the ship's course" (design
     spec Goals)."""
     approach_speed = 80
+    session = GameSession("test-room")
+    asteroids = sorted(session.asteroids.values(), key=lambda a: a.radius)
+    light_id, heavy_id = asteroids[0].id, asteroids[-1].id
 
-    light_delta = _run_head_on_collision("ast-2", approach_speed)  # r=26
-    heavy_delta = _run_head_on_collision("ast-3", approach_speed)  # r=44
+    light_delta = _run_head_on_collision(light_id, approach_speed)
+    heavy_delta = _run_head_on_collision(heavy_id, approach_speed)
 
     assert heavy_delta > light_delta
 

@@ -5,11 +5,11 @@ import BeltScene from './scenes/BeltScene.js'
 new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'app',
-  width: 1280,
-  height: 720,
+  width: window.innerWidth,
+  height: window.innerHeight,
   backgroundColor: '#231f1b',
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   scene: [BeltScene],

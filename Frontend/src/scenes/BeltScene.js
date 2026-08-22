@@ -30,23 +30,6 @@ const PLANET_R = 1300
 // Fixed dev room — matchmaking isn't wired up yet (see design spec non-goals).
 const GAME_SESSION_WS_URL = 'ws://localhost:8000/ws/dev-room'
 
-// Positions are placeholders shown before the first server state broadcast
-// arrives — same role the SHIP constant plays for the ship. Radius is a
-// frontend-only constant (never sent by the server, keyed by id). Must
-// match Backend/GameSessionService/app/entities.py's ASTEROID_DEFS.
-const ASTEROIDS = [
-  { id: 'ast-1', x: 574, y: 262, r: 30 },
-  { id: 'ast-2', x: 835, y: 500, r: 26 },
-  { id: 'ast-3', x: 981, y: 277, r: 44 },
-  { id: 'ast-4', x: 490, y: 202, r: 36 },
-  { id: 'ast-5', x: 906, y: 182, r: 34 },
-  { id: 'ast-6', x: 798, y: 223, r: 28 },
-  { id: 'ast-7', x: 804, y: 385, r: 48 },
-  { id: 'ast-8', x: 1063, y: 363, r: 40 },
-  { id: 'ast-9', x: 966, y: 589, r: 32 },
-  { id: 'ast-10', x: 1123, y: 673, r: 26 },
-]
-
 const SALVAGE = { x: 804, y: 385, r: 64 }
 const HOSTILE = { x: 627, y: 177, w: 70, h: 70 }
 // Must match Backend/GameSessionService's BELT_CENTER + SPAWN_OFFSET — the
@@ -68,12 +51,17 @@ export default class BeltScene extends Phaser.Scene {
     this.drawSalvageMarker()
     this.drawHostileMarker()
 
-    this.remoteAsteroids = new Map(
-      ASTEROIDS.map((a) => [a.id, new RemoteAsteroid(this, a.x, a.y, a.r)]),
-    )
+    // Asteroid layout (position + radius) is server-generated, not a
+    // hardcoded local constant — populated once the "init" message arrives.
+    this.remoteAsteroids = new Map()
 
     this.remoteShip = new RemoteShip(this, SHIP.x, SHIP.y)
     this.gameSocket = new GameSocket(GAME_SESSION_WS_URL)
+    this.gameSocket.onInit((msg) => {
+      for (const a of msg.asteroids) {
+        this.remoteAsteroids.set(a.id, new RemoteAsteroid(this, a.x, a.y, a.r))
+      }
+    })
     this.gameSocket.onState((msg) => {
       this.remoteShip.applyState(msg.ship)
       for (const asteroidState of msg.asteroids) {

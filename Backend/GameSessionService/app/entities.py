@@ -1,3 +1,6 @@
+import math
+import random
+
 import pymunk
 
 SHIP_MASS = 1.0
@@ -19,21 +22,69 @@ ASTEROID_MAX_SPEED = (
 )
 ASTEROID_DRIFT_FORCE = 5.0  # small sinusoidal wobble force for drift=True asteroids
 
-# (id, x, y, r, drift, period) — values copied from
-# Frontend/src/scenes/BeltScene.js's ASTEROIDS array; kept in sync by hand
-# (same convention as BELT_CENTER / fence radii).
-ASTEROID_DEFS = [
-    ("ast-1", 574, 262, 30, True, 17000),
-    ("ast-2", 835, 500, 26, False, None),
-    ("ast-3", 981, 277, 44, True, 23000),
-    ("ast-4", 490, 202, 36, False, None),
-    ("ast-5", 906, 182, 34, True, 29000),
-    ("ast-6", 798, 223, 28, False, None),
-    ("ast-7", 804, 385, 48, True, 19000),
-    ("ast-8", 1063, 363, 40, False, None),
-    ("ast-9", 966, 589, 32, True, 21000),
-    ("ast-10", 1123, 673, 26, False, None),
-]
+# The server is the sole source of truth for the asteroid layout (positions
+# are no longer hand-copied to the frontend — see generate_asteroid_layout).
+# A fixed seed keeps the layout stable across restarts for dev/testing.
+ASTEROID_COUNT = 45
+ASTEROID_LAYOUT_SEED = 42
+ASTEROID_MIN_R = 26.0
+ASTEROID_MAX_R = 48.0
+ASTEROID_DRIFT_CHANCE = 0.5
+ASTEROID_DRIFT_PERIOD_RANGE = (15000.0, 30000.0)  # ms
+ASTEROID_MIN_GAP = 10.0  # px clearance required between any two asteroids
+ASTEROID_SHIP_CLEARANCE = 150.0  # px clearance required around ship spawn
+ASTEROID_PLACEMENT_ATTEMPTS = 500  # per asteroid, before giving up and placing anyway
+
+
+def generate_asteroid_layout(
+    center: tuple[float, float],
+    inner_r: float,
+    outer_r: float,
+    ship_spawn: tuple[float, float],
+    count: int = ASTEROID_COUNT,
+    seed: int = ASTEROID_LAYOUT_SEED,
+) -> list[tuple[str, float, float, float, bool, float | None]]:
+    """Scatters `count` asteroids across the belt annulus around `center`.
+
+    Deterministic for a given seed. Uses rejection sampling to keep
+    asteroids clear of each other and of the ship's spawn point — each
+    candidate is retried (up to ASTEROID_PLACEMENT_ATTEMPTS times) until it
+    clears both, falling back to the last candidate if that cap is hit
+    (the annulus is large relative to asteroid size, so this is rare).
+    Returns (id, x, y, r, drift, period) tuples, matching the old
+    ASTEROID_DEFS shape.
+    """
+    rng = random.Random(seed)
+    cx, cy = center
+    sx, sy = ship_spawn
+    placed: list[tuple[float, float, float]] = []  # (x, y, r)
+    layout: list[tuple[str, float, float, float, bool, float | None]] = []
+
+    for i in range(count):
+        radius = rng.uniform(ASTEROID_MIN_R, ASTEROID_MAX_R)
+        x = y = 0.0
+        for _ in range(ASTEROID_PLACEMENT_ATTEMPTS):
+            angle = rng.uniform(0, 2 * math.pi)
+            distance = rng.uniform(inner_r + radius, outer_r - radius)
+            x = cx + math.cos(angle) * distance
+            y = cy + math.sin(angle) * distance
+
+            clear_of_ship = (
+                math.hypot(x - sx, y - sy) >= radius + ASTEROID_SHIP_CLEARANCE
+            )
+            clear_of_others = all(
+                math.hypot(x - px, y - py) >= radius + pr + ASTEROID_MIN_GAP
+                for px, py, pr in placed
+            )
+            if clear_of_ship and clear_of_others:
+                break
+
+        placed.append((x, y, radius))
+        drift = rng.random() < ASTEROID_DRIFT_CHANCE
+        period = rng.uniform(*ASTEROID_DRIFT_PERIOD_RANGE) if drift else None
+        layout.append((f"ast-{i + 1}", x, y, radius, drift, period))
+
+    return layout
 
 
 class Ship:

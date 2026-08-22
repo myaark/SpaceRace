@@ -41,6 +41,7 @@ async def match_socket(websocket: WebSocket, room_id: str):
     await websocket.accept()
     session = _get_or_create_session(room_id)
     session.register(websocket)
+    await websocket.send_json(session.to_init_message())
     try:
         while True:
             raw = await websocket.receive_text()
