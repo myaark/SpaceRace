@@ -2,7 +2,8 @@ import math
 
 import pytest
 
-from app.entities import ASTEROID_DENSITY, Asteroid, Ship, generate_asteroid_layout
+from app.entities import Asteroid, Ship, generate_asteroid_layout
+from app.settings import settings
 
 CENTER = (-200.0, 1500.0)
 INNER_R = 1420.0
@@ -40,8 +41,8 @@ def test_asteroid_mass_scales_with_radius_squared() -> None:
     small = Asteroid("ast-small", (0, 0), 10)
     large = Asteroid("ast-large", (0, 0), 40)
 
-    assert small.body.mass == ASTEROID_DENSITY * 10**2
-    assert large.body.mass == ASTEROID_DENSITY * 40**2
+    assert small.body.mass == settings.asteroid_density * 10**2
+    assert large.body.mass == settings.asteroid_density * 40**2
     assert large.body.mass == pytest.approx(small.body.mass * 16)
 
 
