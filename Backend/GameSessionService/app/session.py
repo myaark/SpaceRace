@@ -7,6 +7,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.entities import Asteroid, Ship, generate_asteroid_layout
 from app.game_settings import game_settings
+from app.models.messages import AsteroidInit, InitMessage, ShipState, StateMessage
 
 
 class GameSession:
@@ -124,35 +125,36 @@ class GameSession:
 
         self.tick_count += 1
 
-    def to_init_message(self) -> dict:
+    def to_init_message(self) -> InitMessage:
         """One-time layout message: asteroid radius never changes, but since
         the layout is now server-generated (not a hand-copied frontend
         constant), the client needs it sent explicitly on connect."""
-        return {
-            "type": "init",
-            "asteroids": [
-                {
-                    "id": a.id,
-                    "x": a.body.position.x,
-                    "y": a.body.position.y,
-                    "r": a.radius,
-                }
+        return InitMessage(
+            belt_center_x=self._belt_center.x,
+            belt_center_y=self._belt_center.y,
+            spawn_x=self._spawn.x,
+            spawn_y=self._spawn.y,
+            inner_r=self._inner_fence_r,
+            outer_r=self._outer_fence_r,
+            asteroids=[
+                AsteroidInit(
+                    id=a.id, x=a.body.position.x, y=a.body.position.y, r=a.radius
+                )
                 for a in self.asteroids.values()
             ],
-        }
+        )
 
-    def to_broadcast_message(self) -> dict:
-        return {
-            "type": "state",
-            "tick": self.tick_count,
-            "ship": self.ship.to_state(),
-            "asteroids": [a.to_state() for a in self.asteroids.values()],
-        }
+    def to_broadcast_message(self) -> StateMessage:
+        return StateMessage(
+            tick=self.tick_count,
+            ship=ShipState(**self.ship.to_state()),
+            asteroids=[ShipState(**a.to_state()) for a in self.asteroids.values()],
+        )
 
     async def broadcast(self) -> None:
         if not self.connections:
             return
-        message = self.to_broadcast_message()
+        message = self.to_broadcast_message().model_dump()
         dead: list[WebSocket] = []
         for websocket in self.connections:
             try:

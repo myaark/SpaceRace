@@ -5,6 +5,7 @@ import pymunk
 import pytest
 
 from app.game_settings import game_settings
+from app.models.messages import InitMessage, StateMessage
 from app.session import GameSession
 
 BELT_CENTER = pymunk.Vec2d(*game_settings.belt_center)
@@ -241,3 +242,27 @@ def test_broadcast_uses_injected_logger_on_dropped_client(caplog) -> None:
     assert len(caplog.records) == 1
     assert caplog.records[0].name == "test-custom-logger"
     assert "test-room" in caplog.records[0].getMessage()
+
+
+def test_to_init_message_includes_belt_geometry_and_asteroids(
+    session: GameSession,
+) -> None:
+    init = session.to_init_message()
+
+    assert isinstance(init, InitMessage)
+    assert init.belt_center_x == pytest.approx(BELT_CENTER.x)
+    assert init.belt_center_y == pytest.approx(BELT_CENTER.y)
+    assert init.spawn_x == pytest.approx((BELT_CENTER + SPAWN_OFFSET).x)
+    assert init.spawn_y == pytest.approx((BELT_CENTER + SPAWN_OFFSET).y)
+    assert init.inner_r == INNER_FENCE_R
+    assert init.outer_r == OUTER_FENCE_R
+    assert len(init.asteroids) == len(session.asteroids)
+
+
+def test_to_broadcast_message_returns_typed_state(session: GameSession) -> None:
+    state = session.to_broadcast_message()
+
+    assert isinstance(state, StateMessage)
+    assert state.tick == session.tick_count
+    assert state.ship.id == session.ship.id
+    assert len(state.asteroids) == len(session.asteroids)
