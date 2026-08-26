@@ -1,3 +1,6 @@
+import asyncio
+import logging
+
 import pymunk
 import pytest
 
@@ -221,3 +224,20 @@ def test_ship_max_speed_change_is_reflected_live_per_tick(
         assert session.ship.body.velocity.length < original
     finally:
         game_settings.ship_max_speed = original
+
+
+def test_broadcast_uses_injected_logger_on_dropped_client(caplog) -> None:
+    class _FailingWebSocket:
+        async def send_json(self, data: dict) -> None:
+            raise RuntimeError("send failed")
+
+    custom_logger = logging.getLogger("test-custom-logger")
+    session = GameSession("test-room", logger=custom_logger)
+    session.connections.add(_FailingWebSocket())
+
+    with caplog.at_level(logging.INFO, logger="test-custom-logger"):
+        asyncio.run(session.broadcast())
+
+    assert len(caplog.records) == 1
+    assert caplog.records[0].name == "test-custom-logger"
+    assert "test-room" in caplog.records[0].getMessage()

@@ -8,14 +8,13 @@ from starlette.websockets import WebSocketDisconnect
 from app.entities import Asteroid, Ship, generate_asteroid_layout
 from app.game_settings import game_settings
 
-logger = logging.getLogger(__name__)
-
 
 class GameSession:
     """Owns the authoritative physics state and connected sockets for one room."""
 
-    def __init__(self, room_id: str) -> None:
+    def __init__(self, room_id: str, logger: logging.Logger | None = None) -> None:
         self.room_id = room_id
+        self._logger = logger or logging.getLogger(f"{__name__}.{room_id}")
         self.space = pymunk.Space()
         self.space.gravity = (0, 0)
         self.space.damping = game_settings.space_damping
@@ -159,7 +158,9 @@ class GameSession:
             try:
                 await websocket.send_json(message)
             except (WebSocketDisconnect, RuntimeError):
-                logger.info("Dropping disconnected client from room %s", self.room_id)
+                self._logger.info(
+                    "Dropping disconnected client from room %s", self.room_id
+                )
                 dead.append(websocket)
         for websocket in dead:
             self.unregister(websocket)
