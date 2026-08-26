@@ -2,7 +2,8 @@ import math
 
 import pytest
 
-from app.entities import ASTEROID_DENSITY, Asteroid, Ship, generate_asteroid_layout
+from app.entities import Asteroid, Ship, generate_asteroid_layout
+from app.game_settings import game_settings
 
 CENTER = (-200.0, 1500.0)
 INNER_R = 1420.0
@@ -40,8 +41,8 @@ def test_asteroid_mass_scales_with_radius_squared() -> None:
     small = Asteroid("ast-small", (0, 0), 10)
     large = Asteroid("ast-large", (0, 0), 40)
 
-    assert small.body.mass == ASTEROID_DENSITY * 10**2
-    assert large.body.mass == ASTEROID_DENSITY * 40**2
+    assert small.body.mass == game_settings.asteroid_density * 10**2
+    assert large.body.mass == game_settings.asteroid_density * 40**2
     assert large.body.mass == pytest.approx(small.body.mass * 16)
 
 
@@ -76,3 +77,17 @@ def test_generate_asteroid_layout_avoids_overlap_and_ship_clearance() -> None:
         assert math.hypot(x - sx, y - sy) >= r + 150.0 - 1e-6
         for _, ox, oy, oradius, _, _ in layout[i + 1 :]:
             assert math.hypot(x - ox, y - oy) >= r + oradius + 10.0 - 1e-6
+
+
+def test_ship_radius_change_is_reflected_in_newly_constructed_ships() -> None:
+    """Construction-time field: mutating game_settings.ship_radius should
+    change the shape of a Ship built *after* the edit, proving the settings
+    migration actually drives object construction and not just that the
+    dataclass field itself happens to be assignable."""
+    original = game_settings.ship_radius
+    try:
+        game_settings.ship_radius = 55.0
+        ship = Ship("ship-radius-test", (0, 0))
+        assert ship.shape.radius == 55.0
+    finally:
+        game_settings.ship_radius = original

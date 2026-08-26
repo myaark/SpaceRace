@@ -3,37 +3,7 @@ import random
 
 import pymunk
 
-SHIP_MASS = 1.0
-SHIP_RADIUS = 20.0
-SHIP_THRUST_FORCE = 400.0
-SHIP_TURN_RATE = 3.0  # radians/sec
-SHIP_MAX_SPEED = 90.0  # px/sec — deliberately low handling cap
-
-# "Mostly elastic" collisions with a touch of friction — pymunk shapes
-# default to 0/0, which would make any contact perfectly inelastic (bodies
-# stick instead of bouncing).
-COLLISION_ELASTICITY = 0.8
-COLLISION_FRICTION = 0.3
-
-# Same density for every asteroid, so mass scales purely with size (area).
-ASTEROID_DENSITY = SHIP_MASS / SHIP_RADIUS**2
-ASTEROID_MAX_SPEED = (
-    300.0  # generous cap vs. SHIP_MAX_SPEED, guards against runaway collision velocity
-)
-ASTEROID_DRIFT_FORCE = 5.0  # small sinusoidal wobble force for drift=True asteroids
-
-# The server is the sole source of truth for the asteroid layout (positions
-# are no longer hand-copied to the frontend — see generate_asteroid_layout).
-# A fixed seed keeps the layout stable across restarts for dev/testing.
-ASTEROID_COUNT = 45
-ASTEROID_LAYOUT_SEED = 42
-ASTEROID_MIN_R = 26.0
-ASTEROID_MAX_R = 48.0
-ASTEROID_DRIFT_CHANCE = 0.5
-ASTEROID_DRIFT_PERIOD_RANGE = (15000.0, 30000.0)  # ms
-ASTEROID_MIN_GAP = 10.0  # px clearance required between any two asteroids
-ASTEROID_SHIP_CLEARANCE = 150.0  # px clearance required around ship spawn
-ASTEROID_PLACEMENT_ATTEMPTS = 500  # per asteroid, before giving up and placing anyway
+from app.game_settings import game_settings
 
 
 def generate_asteroid_layout(
@@ -41,19 +11,21 @@ def generate_asteroid_layout(
     inner_r: float,
     outer_r: float,
     ship_spawn: tuple[float, float],
-    count: int = ASTEROID_COUNT,
-    seed: int = ASTEROID_LAYOUT_SEED,
+    count: int | None = None,
+    seed: int | None = None,
 ) -> list[tuple[str, float, float, float, bool, float | None]]:
     """Scatters `count` asteroids across the belt annulus around `center`.
 
     Deterministic for a given seed. Uses rejection sampling to keep
     asteroids clear of each other and of the ship's spawn point — each
-    candidate is retried (up to ASTEROID_PLACEMENT_ATTEMPTS times) until it
-    clears both, falling back to the last candidate if that cap is hit
-    (the annulus is large relative to asteroid size, so this is rare).
+    candidate is retried (up to game_settings.asteroid_placement_attempts times)
+    until it clears both, falling back to the last candidate if that cap is
+    hit (the annulus is large relative to asteroid size, so this is rare).
     Returns (id, x, y, r, drift, period) tuples, matching the old
     ASTEROID_DEFS shape.
     """
+    count = game_settings.asteroid_count if count is None else count
+    seed = game_settings.asteroid_layout_seed if seed is None else seed
     rng = random.Random(seed)
     cx, cy = center
     sx, sy = ship_spawn
@@ -61,27 +33,31 @@ def generate_asteroid_layout(
     layout: list[tuple[str, float, float, float, bool, float | None]] = []
 
     for i in range(count):
-        radius = rng.uniform(ASTEROID_MIN_R, ASTEROID_MAX_R)
+        radius = rng.uniform(game_settings.asteroid_min_r, game_settings.asteroid_max_r)
         x = y = 0.0
-        for _ in range(ASTEROID_PLACEMENT_ATTEMPTS):
+        for _ in range(game_settings.asteroid_placement_attempts):
             angle = rng.uniform(0, 2 * math.pi)
             distance = rng.uniform(inner_r + radius, outer_r - radius)
             x = cx + math.cos(angle) * distance
             y = cy + math.sin(angle) * distance
 
             clear_of_ship = (
-                math.hypot(x - sx, y - sy) >= radius + ASTEROID_SHIP_CLEARANCE
+                math.hypot(x - sx, y - sy)
+                >= radius + game_settings.asteroid_ship_clearance
             )
             clear_of_others = all(
-                math.hypot(x - px, y - py) >= radius + pr + ASTEROID_MIN_GAP
+                math.hypot(x - px, y - py)
+                >= radius + pr + game_settings.asteroid_min_gap
                 for px, py, pr in placed
             )
             if clear_of_ship and clear_of_others:
                 break
 
         placed.append((x, y, radius))
-        drift = rng.random() < ASTEROID_DRIFT_CHANCE
-        period = rng.uniform(*ASTEROID_DRIFT_PERIOD_RANGE) if drift else None
+        drift = rng.random() < game_settings.asteroid_drift_chance
+        period = (
+            rng.uniform(*game_settings.asteroid_drift_period_range) if drift else None
+        )
         layout.append((f"ast-{i + 1}", x, y, radius, drift, period))
 
     return layout
@@ -92,12 +68,14 @@ class Ship:
 
     def __init__(self, ship_id: str, position: tuple[float, float]) -> None:
         self.id = ship_id
-        moment = pymunk.moment_for_circle(SHIP_MASS, 0, SHIP_RADIUS)
-        self.body = pymunk.Body(SHIP_MASS, moment)
+        moment = pymunk.moment_for_circle(
+            game_settings.ship_mass, 0, game_settings.ship_radius
+        )
+        self.body = pymunk.Body(game_settings.ship_mass, moment)
         self.body.position = position
-        self.shape = pymunk.Circle(self.body, SHIP_RADIUS)
-        self.shape.elasticity = COLLISION_ELASTICITY
-        self.shape.friction = COLLISION_FRICTION
+        self.shape = pymunk.Circle(self.body, game_settings.ship_radius)
+        self.shape.elasticity = game_settings.collision_elasticity
+        self.shape.friction = game_settings.collision_friction
 
     def to_state(self) -> dict:
         return {
@@ -125,13 +103,13 @@ class Asteroid:
         self.radius = radius
         self.drift = drift
         self.period = period
-        mass = ASTEROID_DENSITY * radius**2
+        mass = game_settings.asteroid_density * radius**2
         moment = pymunk.moment_for_circle(mass, 0, radius)
         self.body = pymunk.Body(mass, moment)
         self.body.position = position
         self.shape = pymunk.Circle(self.body, radius)
-        self.shape.elasticity = COLLISION_ELASTICITY
-        self.shape.friction = COLLISION_FRICTION
+        self.shape.elasticity = game_settings.collision_elasticity
+        self.shape.friction = game_settings.collision_friction
 
     def to_state(self) -> dict:
         return {
