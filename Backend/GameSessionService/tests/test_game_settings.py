@@ -36,3 +36,12 @@ def test_settings_singleton_is_mutable() -> None:
         assert game_settings.ship_thrust_force == 999.0
     finally:
         game_settings.ship_thrust_force = original
+
+
+def test_defaults_include_belt_geometry() -> None:
+    defaults = GameSettings()
+
+    assert defaults.belt_center == (-200.0, 1500.0)
+    assert defaults.spawn_offset == (924.0, -1182.0)
+    assert defaults.inner_fence_r == 1420.0
+    assert defaults.outer_fence_r == 1760.0

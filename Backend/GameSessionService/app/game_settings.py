@@ -45,5 +45,19 @@ class GameSettings:
     asteroid_ship_clearance: float = 150.0  # px clearance around ship spawn
     asteroid_placement_attempts: int = 500  # per asteroid, before giving up
 
+    # Belt boundary geometry. Must match Frontend/src/scenes/BeltScene.js's
+    # BELT_CENTER / OUTER_FENCE_R / INNER_FENCE_R — there is no shared-schema
+    # mechanism enforcing this, so keep the two in sync by hand.
+    belt_center: tuple[float, float] = (-200.0, 1500.0)
+
+    # Offset from belt_center to Frontend/src/scenes/BeltScene.js's SHIP
+    # constant (724, 318). The ship must spawn exactly here — it's the only
+    # point the frontend draws before the first server state arrives, so any
+    # mismatch makes the ship appear to teleport/disappear on the first
+    # broadcast.
+    spawn_offset: tuple[float, float] = (924.0, -1182.0)
+    inner_fence_r: float = 1420.0
+    outer_fence_r: float = 1760.0
+
 
 game_settings = GameSettings()

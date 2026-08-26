@@ -2,13 +2,12 @@ import pymunk
 import pytest
 
 from app.game_settings import game_settings
-from app.session import (
-    BELT_CENTER,
-    INNER_FENCE_R,
-    OUTER_FENCE_R,
-    SPAWN_OFFSET,
-    GameSession,
-)
+from app.session import GameSession
+
+BELT_CENTER = pymunk.Vec2d(*game_settings.belt_center)
+INNER_FENCE_R = game_settings.inner_fence_r
+OUTER_FENCE_R = game_settings.outer_fence_r
+SPAWN_OFFSET = pymunk.Vec2d(*game_settings.spawn_offset)
 
 TICK_DT = 1 / 20
 

@@ -10,19 +10,6 @@ from app.game_settings import game_settings
 
 logger = logging.getLogger(__name__)
 
-# Belt boundary geometry. Must match Frontend/src/scenes/BeltScene.js's
-# BELT_CENTER / OUTER_FENCE_R / INNER_FENCE_R — there is no shared-schema
-# mechanism enforcing this, so keep the two in sync by hand.
-BELT_CENTER = pymunk.Vec2d(-200, 1500)
-OUTER_FENCE_R = 1760.0
-INNER_FENCE_R = 1420.0
-
-# Offset from BELT_CENTER to Frontend/src/scenes/BeltScene.js's SHIP constant
-# (724, 318). The ship must spawn exactly here — it's the only point the
-# frontend draws before the first server state arrives, so any mismatch
-# makes the ship appear to teleport/disappear on the first broadcast.
-SPAWN_OFFSET = pymunk.Vec2d(924, -1182)
-
 
 class GameSession:
     """Owns the authoritative physics state and connected sockets for one room."""
@@ -33,15 +20,19 @@ class GameSession:
         self.space.gravity = (0, 0)
         self.space.damping = game_settings.space_damping
 
-        spawn = BELT_CENTER + SPAWN_OFFSET
-        self.ship = Ship("ship-1", (spawn.x, spawn.y))
+        self._belt_center = pymunk.Vec2d(*game_settings.belt_center)
+        self._inner_fence_r = game_settings.inner_fence_r
+        self._outer_fence_r = game_settings.outer_fence_r
+        self._spawn = self._belt_center + pymunk.Vec2d(*game_settings.spawn_offset)
+
+        self.ship = Ship("ship-1", (self._spawn.x, self._spawn.y))
         self.space.add(self.ship.body, self.ship.shape)
 
         layout = generate_asteroid_layout(
-            (BELT_CENTER.x, BELT_CENTER.y),
-            INNER_FENCE_R,
-            OUTER_FENCE_R,
-            (spawn.x, spawn.y),
+            (self._belt_center.x, self._belt_center.y),
+            self._inner_fence_r,
+            self._outer_fence_r,
+            (self._spawn.x, self._spawn.y),
         )
         self.asteroids: dict[str, Asteroid] = {}
         for asteroid_id, x, y, r, drift, period in layout:
@@ -87,17 +78,17 @@ class GameSession:
             body.velocity = body.velocity * (max_speed / speed)
 
     def _clamp_to_belt(self, body: pymunk.Body) -> None:
-        offset = body.position - BELT_CENTER
+        offset = body.position - self._belt_center
         distance = offset.length
 
-        if INNER_FENCE_R <= distance <= OUTER_FENCE_R:
+        if self._inner_fence_r <= distance <= self._outer_fence_r:
             return
 
-        past_outer = distance > OUTER_FENCE_R
-        clamped_distance = OUTER_FENCE_R if past_outer else INNER_FENCE_R
+        past_outer = distance > self._outer_fence_r
+        clamped_distance = self._outer_fence_r if past_outer else self._inner_fence_r
         radial_dir = offset.normalized() if distance > 1e-6 else pymunk.Vec2d(1, 0)
 
-        body.position = BELT_CENTER + radial_dir * clamped_distance
+        body.position = self._belt_center + radial_dir * clamped_distance
         radial_velocity = body.velocity.dot(radial_dir)
         # Only kill the component still pushing past this fence, so a body
         # that has reversed course back toward the belt isn't stuck there.
