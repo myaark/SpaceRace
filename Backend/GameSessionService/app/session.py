@@ -5,16 +5,8 @@ import pymunk
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from app.entities import (
-    ASTEROID_DRIFT_FORCE,
-    ASTEROID_MAX_SPEED,
-    SHIP_MAX_SPEED,
-    SHIP_THRUST_FORCE,
-    SHIP_TURN_RATE,
-    Asteroid,
-    Ship,
-    generate_asteroid_layout,
-)
+from app.entities import Asteroid, Ship, generate_asteroid_layout
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -88,9 +80,9 @@ class GameSession:
 
         if thrust:
             self.ship.body.apply_force_at_local_point(
-                (thrust * SHIP_THRUST_FORCE, 0), (0, 0)
+                (thrust * settings.ship_thrust_force, 0), (0, 0)
             )
-        self.ship.body.angular_velocity = turn * SHIP_TURN_RATE
+        self.ship.body.angular_velocity = turn * settings.ship_turn_rate
 
     def _clamp_speed(self, body: pymunk.Body, max_speed: float) -> None:
         speed = body.velocity.length
@@ -125,7 +117,8 @@ class GameSession:
             phase = index * (math.pi / 4)
             angle = (2 * math.pi * self._elapsed_ms / asteroid.period) + phase
             force = (
-                pymunk.Vec2d(math.cos(angle), math.sin(angle)) * ASTEROID_DRIFT_FORCE
+                pymunk.Vec2d(math.cos(angle), math.sin(angle))
+                * settings.asteroid_drift_force
             )
             asteroid.body.apply_force_at_local_point(force, (0, 0))
 
@@ -136,10 +129,10 @@ class GameSession:
         self._apply_drift()
         self.space.step(dt)
 
-        self._clamp_speed(self.ship.body, SHIP_MAX_SPEED)
+        self._clamp_speed(self.ship.body, settings.ship_max_speed)
         self._clamp_to_belt(self.ship.body)
         for asteroid in self.asteroids.values():
-            self._clamp_speed(asteroid.body, ASTEROID_MAX_SPEED)
+            self._clamp_speed(asteroid.body, settings.asteroid_max_speed)
             self._clamp_to_belt(asteroid.body)
 
         self.tick_count += 1

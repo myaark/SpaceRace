@@ -1,15 +1,14 @@
 import pymunk
 import pytest
 
-from app.entities import SHIP_RADIUS
 from app.session import (
     BELT_CENTER,
     INNER_FENCE_R,
     OUTER_FENCE_R,
-    SHIP_MAX_SPEED,
     SPAWN_OFFSET,
     GameSession,
 )
+from app.settings import settings
 
 TICK_DT = 1 / 20
 
@@ -25,7 +24,7 @@ def _run_head_on_collision(
 
     approach_dir = pymunk.Vec2d(1, 0)
     contact_distance = (
-        target.radius + SHIP_RADIUS - 1
+        target.radius + settings.ship_radius - 1
     )  # slight overlap to force contact on tick 1
     session.ship.body.position = target.body.position - approach_dir * contact_distance
     session.ship.body.velocity = approach_dir * approach_speed
@@ -130,7 +129,7 @@ def test_speed_is_clamped_to_max(session: GameSession) -> None:
     for _ in range(200):
         session.step(TICK_DT)
 
-    assert session.ship.body.velocity.length <= SHIP_MAX_SPEED + 1e-6
+    assert session.ship.body.velocity.length <= settings.ship_max_speed + 1e-6
 
 
 def test_asteroids_spawn_within_belt_annulus(session: GameSession) -> None:
@@ -144,7 +143,7 @@ def test_asteroids_do_not_overlap_each_other_or_the_ship(
     session: GameSession,
 ) -> None:
     bodies = [(a.body.position, a.radius) for a in session.asteroids.values()]
-    bodies.append((session.ship.body.position, SHIP_RADIUS))
+    bodies.append((session.ship.body.position, settings.ship_radius))
 
     for i, (pos_a, r_a) in enumerate(bodies):
         for pos_b, r_b in bodies[i + 1 :]:
