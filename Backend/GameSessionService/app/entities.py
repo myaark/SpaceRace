@@ -3,7 +3,7 @@ import random
 
 import pymunk
 
-from app.settings import settings
+from app.game_settings import game_settings
 
 
 def generate_asteroid_layout(
@@ -18,14 +18,14 @@ def generate_asteroid_layout(
 
     Deterministic for a given seed. Uses rejection sampling to keep
     asteroids clear of each other and of the ship's spawn point — each
-    candidate is retried (up to settings.asteroid_placement_attempts times)
+    candidate is retried (up to game_settings.asteroid_placement_attempts times)
     until it clears both, falling back to the last candidate if that cap is
     hit (the annulus is large relative to asteroid size, so this is rare).
     Returns (id, x, y, r, drift, period) tuples, matching the old
     ASTEROID_DEFS shape.
     """
-    count = settings.asteroid_count if count is None else count
-    seed = settings.asteroid_layout_seed if seed is None else seed
+    count = game_settings.asteroid_count if count is None else count
+    seed = game_settings.asteroid_layout_seed if seed is None else seed
     rng = random.Random(seed)
     cx, cy = center
     sx, sy = ship_spawn
@@ -33,27 +33,31 @@ def generate_asteroid_layout(
     layout: list[tuple[str, float, float, float, bool, float | None]] = []
 
     for i in range(count):
-        radius = rng.uniform(settings.asteroid_min_r, settings.asteroid_max_r)
+        radius = rng.uniform(game_settings.asteroid_min_r, game_settings.asteroid_max_r)
         x = y = 0.0
-        for _ in range(settings.asteroid_placement_attempts):
+        for _ in range(game_settings.asteroid_placement_attempts):
             angle = rng.uniform(0, 2 * math.pi)
             distance = rng.uniform(inner_r + radius, outer_r - radius)
             x = cx + math.cos(angle) * distance
             y = cy + math.sin(angle) * distance
 
             clear_of_ship = (
-                math.hypot(x - sx, y - sy) >= radius + settings.asteroid_ship_clearance
+                math.hypot(x - sx, y - sy)
+                >= radius + game_settings.asteroid_ship_clearance
             )
             clear_of_others = all(
-                math.hypot(x - px, y - py) >= radius + pr + settings.asteroid_min_gap
+                math.hypot(x - px, y - py)
+                >= radius + pr + game_settings.asteroid_min_gap
                 for px, py, pr in placed
             )
             if clear_of_ship and clear_of_others:
                 break
 
         placed.append((x, y, radius))
-        drift = rng.random() < settings.asteroid_drift_chance
-        period = rng.uniform(*settings.asteroid_drift_period_range) if drift else None
+        drift = rng.random() < game_settings.asteroid_drift_chance
+        period = (
+            rng.uniform(*game_settings.asteroid_drift_period_range) if drift else None
+        )
         layout.append((f"ast-{i + 1}", x, y, radius, drift, period))
 
     return layout
@@ -64,12 +68,14 @@ class Ship:
 
     def __init__(self, ship_id: str, position: tuple[float, float]) -> None:
         self.id = ship_id
-        moment = pymunk.moment_for_circle(settings.ship_mass, 0, settings.ship_radius)
-        self.body = pymunk.Body(settings.ship_mass, moment)
+        moment = pymunk.moment_for_circle(
+            game_settings.ship_mass, 0, game_settings.ship_radius
+        )
+        self.body = pymunk.Body(game_settings.ship_mass, moment)
         self.body.position = position
-        self.shape = pymunk.Circle(self.body, settings.ship_radius)
-        self.shape.elasticity = settings.collision_elasticity
-        self.shape.friction = settings.collision_friction
+        self.shape = pymunk.Circle(self.body, game_settings.ship_radius)
+        self.shape.elasticity = game_settings.collision_elasticity
+        self.shape.friction = game_settings.collision_friction
 
     def to_state(self) -> dict:
         return {
@@ -97,13 +103,13 @@ class Asteroid:
         self.radius = radius
         self.drift = drift
         self.period = period
-        mass = settings.asteroid_density * radius**2
+        mass = game_settings.asteroid_density * radius**2
         moment = pymunk.moment_for_circle(mass, 0, radius)
         self.body = pymunk.Body(mass, moment)
         self.body.position = position
         self.shape = pymunk.Circle(self.body, radius)
-        self.shape.elasticity = settings.collision_elasticity
-        self.shape.friction = settings.collision_friction
+        self.shape.elasticity = game_settings.collision_elasticity
+        self.shape.friction = game_settings.collision_friction
 
     def to_state(self) -> dict:
         return {

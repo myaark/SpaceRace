@@ -1,4 +1,4 @@
-from app.settings import GameSettings, settings
+from app.game_settings import GameSettings, game_settings
 
 
 def test_defaults_match_original_constants() -> None:
@@ -9,6 +9,7 @@ def test_defaults_match_original_constants() -> None:
     assert defaults.ship_thrust_force == 400.0
     assert defaults.ship_turn_rate == 3.0
     assert defaults.ship_max_speed == 90.0
+    assert defaults.space_damping == 0.0003
 
     assert defaults.collision_elasticity == 0.8
     assert defaults.collision_friction == 0.3
@@ -29,9 +30,9 @@ def test_defaults_match_original_constants() -> None:
 
 
 def test_settings_singleton_is_mutable() -> None:
-    original = settings.ship_thrust_force
+    original = game_settings.ship_thrust_force
     try:
-        settings.ship_thrust_force = 999.0
-        assert settings.ship_thrust_force == 999.0
+        game_settings.ship_thrust_force = 999.0
+        assert game_settings.ship_thrust_force == 999.0
     finally:
-        settings.ship_thrust_force = original
+        game_settings.ship_thrust_force = original

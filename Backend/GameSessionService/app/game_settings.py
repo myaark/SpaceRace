@@ -6,7 +6,7 @@ class GameSettings:
     """Mutable, runtime-tunable gameplay/physics values.
 
     Read fresh at point of use (per tick or per object construction) via
-    the module-level `settings` singleton below — there is no change
+    the module-level `game_settings` singleton below — there is no change
     hook, so edits to a field only affect objects constructed after the
     edit, and take effect immediately for values re-read every tick.
     """
@@ -17,6 +17,7 @@ class GameSettings:
     ship_thrust_force: float = 400.0
     ship_turn_rate: float = 3.0  # radians/sec
     ship_max_speed: float = 90.0  # px/sec — deliberately low handling cap
+    space_damping: float = 0.0003  # Fraction of velocity retained per second — unpowered ship stops in ~0.3s.
 
     # "Mostly elastic" collisions with a touch of friction — pymunk shapes
     # default to 0/0, which would make any contact perfectly inelastic
@@ -45,4 +46,4 @@ class GameSettings:
     asteroid_placement_attempts: int = 500  # per asteroid, before giving up
 
 
-settings = GameSettings()
+game_settings = GameSettings()

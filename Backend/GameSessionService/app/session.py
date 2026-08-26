@@ -6,7 +6,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from app.entities import Asteroid, Ship, generate_asteroid_layout
-from app.settings import settings
+from app.game_settings import game_settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +23,6 @@ INNER_FENCE_R = 1420.0
 # makes the ship appear to teleport/disappear on the first broadcast.
 SPAWN_OFFSET = pymunk.Vec2d(924, -1182)
 
-# Fraction of velocity retained per second — unpowered ship stops in ~0.3s.
-SPACE_DAMPING = 0.0003
-
 
 class GameSession:
     """Owns the authoritative physics state and connected sockets for one room."""
@@ -34,7 +31,7 @@ class GameSession:
         self.room_id = room_id
         self.space = pymunk.Space()
         self.space.gravity = (0, 0)
-        self.space.damping = SPACE_DAMPING
+        self.space.damping = game_settings.space_damping
 
         spawn = BELT_CENTER + SPAWN_OFFSET
         self.ship = Ship("ship-1", (spawn.x, spawn.y))
@@ -80,9 +77,9 @@ class GameSession:
 
         if thrust:
             self.ship.body.apply_force_at_local_point(
-                (thrust * settings.ship_thrust_force, 0), (0, 0)
+                (thrust * game_settings.ship_thrust_force, 0), (0, 0)
             )
-        self.ship.body.angular_velocity = turn * settings.ship_turn_rate
+        self.ship.body.angular_velocity = turn * game_settings.ship_turn_rate
 
     def _clamp_speed(self, body: pymunk.Body, max_speed: float) -> None:
         speed = body.velocity.length
@@ -118,7 +115,7 @@ class GameSession:
             angle = (2 * math.pi * self._elapsed_ms / asteroid.period) + phase
             force = (
                 pymunk.Vec2d(math.cos(angle), math.sin(angle))
-                * settings.asteroid_drift_force
+                * game_settings.asteroid_drift_force
             )
             asteroid.body.apply_force_at_local_point(force, (0, 0))
 
@@ -129,10 +126,10 @@ class GameSession:
         self._apply_drift()
         self.space.step(dt)
 
-        self._clamp_speed(self.ship.body, settings.ship_max_speed)
+        self._clamp_speed(self.ship.body, game_settings.ship_max_speed)
         self._clamp_to_belt(self.ship.body)
         for asteroid in self.asteroids.values():
-            self._clamp_speed(asteroid.body, settings.asteroid_max_speed)
+            self._clamp_speed(asteroid.body, game_settings.asteroid_max_speed)
             self._clamp_to_belt(asteroid.body)
 
         self.tick_count += 1
