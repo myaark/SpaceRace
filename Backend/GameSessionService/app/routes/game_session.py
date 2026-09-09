@@ -24,5 +24,5 @@ def health() -> HealthResponse:
 
 
 @router.websocket("/ws/{room_id}")
-async def match_socket(websocket: WebSocket, room_id: str):
-    await session_manager.handle_connection(websocket, room_id)
+async def match_socket(websocket: WebSocket, room_id: str, player_id: str):
+    await session_manager.handle_connection(websocket, room_id, player_id)
