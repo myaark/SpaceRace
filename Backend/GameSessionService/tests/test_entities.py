@@ -8,7 +8,7 @@ from app.game_settings import game_settings
 CENTER = (-200.0, 1500.0)
 INNER_R = 1420.0
 OUTER_R = 1760.0
-SHIP_SPAWN = (724.0, 318.0)
+SHIP_SPAWNS = [(724.0, 318.0), (900.0, 500.0)]
 
 
 def test_to_state_reflects_body_position_and_id() -> None:
@@ -47,21 +47,21 @@ def test_asteroid_mass_scales_with_radius_squared() -> None:
 
 
 def test_generate_asteroid_layout_is_deterministic_for_a_seed() -> None:
-    layout_a = generate_asteroid_layout(CENTER, INNER_R, OUTER_R, SHIP_SPAWN, seed=42)
-    layout_b = generate_asteroid_layout(CENTER, INNER_R, OUTER_R, SHIP_SPAWN, seed=42)
+    layout_a = generate_asteroid_layout(CENTER, INNER_R, OUTER_R, SHIP_SPAWNS, seed=42)
+    layout_b = generate_asteroid_layout(CENTER, INNER_R, OUTER_R, SHIP_SPAWNS, seed=42)
 
     assert layout_a == layout_b
 
 
 def test_generate_asteroid_layout_returns_requested_count() -> None:
-    layout = generate_asteroid_layout(CENTER, INNER_R, OUTER_R, SHIP_SPAWN, count=45)
+    layout = generate_asteroid_layout(CENTER, INNER_R, OUTER_R, SHIP_SPAWNS, count=45)
 
     assert len(layout) == 45
     assert len({asteroid_id for asteroid_id, *_ in layout}) == 45
 
 
 def test_generate_asteroid_layout_stays_within_annulus() -> None:
-    layout = generate_asteroid_layout(CENTER, INNER_R, OUTER_R, SHIP_SPAWN)
+    layout = generate_asteroid_layout(CENTER, INNER_R, OUTER_R, SHIP_SPAWNS)
     cx, cy = CENTER
 
     for _, x, y, r, _, _ in layout:
@@ -69,12 +69,14 @@ def test_generate_asteroid_layout_stays_within_annulus() -> None:
         assert INNER_R + r - 1e-6 <= distance <= OUTER_R - r + 1e-6
 
 
-def test_generate_asteroid_layout_avoids_overlap_and_ship_clearance() -> None:
-    layout = generate_asteroid_layout(CENTER, INNER_R, OUTER_R, SHIP_SPAWN)
-    sx, sy = SHIP_SPAWN
+def test_generate_asteroid_layout_avoids_overlap_and_every_ship_spawn_clearance() -> (
+    None
+):
+    layout = generate_asteroid_layout(CENTER, INNER_R, OUTER_R, SHIP_SPAWNS)
 
     for i, (_, x, y, r, _, _) in enumerate(layout):
-        assert math.hypot(x - sx, y - sy) >= r + 150.0 - 1e-6
+        for sx, sy in SHIP_SPAWNS:
+            assert math.hypot(x - sx, y - sy) >= r + 150.0 - 1e-6
         for _, ox, oy, oradius, _, _ in layout[i + 1 :]:
             assert math.hypot(x - ox, y - oy) >= r + oradius + 10.0 - 1e-6
 

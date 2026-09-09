@@ -10,25 +10,24 @@ def generate_asteroid_layout(
     center: tuple[float, float],
     inner_r: float,
     outer_r: float,
-    ship_spawn: tuple[float, float],
+    ship_spawns: list[tuple[float, float]],
     count: int | None = None,
     seed: int | None = None,
 ) -> list[tuple[str, float, float, float, bool, float | None]]:
     """Scatters `count` asteroids across the belt annulus around `center`.
 
     Deterministic for a given seed. Uses rejection sampling to keep
-    asteroids clear of each other and of the ship's spawn point — each
-    candidate is retried (up to game_settings.asteroid_placement_attempts times)
-    until it clears both, falling back to the last candidate if that cap is
-    hit (the annulus is large relative to asteroid size, so this is rare).
-    Returns (id, x, y, r, drift, period) tuples, matching the old
+    asteroids clear of each other and of every point in `ship_spawns` —
+    each candidate is retried (up to game_settings.asteroid_placement_attempts
+    times) until it clears both, falling back to the last candidate if that
+    cap is hit (the annulus is large relative to asteroid size, so this is
+    rare). Returns (id, x, y, r, drift, period) tuples, matching the old
     ASTEROID_DEFS shape.
     """
     count = game_settings.asteroid_count if count is None else count
     seed = game_settings.asteroid_layout_seed if seed is None else seed
     rng = random.Random(seed)
     cx, cy = center
-    sx, sy = ship_spawn
     placed: list[tuple[float, float, float]] = []  # (x, y, r)
     layout: list[tuple[str, float, float, float, bool, float | None]] = []
 
@@ -41,16 +40,17 @@ def generate_asteroid_layout(
             x = cx + math.cos(angle) * distance
             y = cy + math.sin(angle) * distance
 
-            clear_of_ship = (
+            clear_of_ships = all(
                 math.hypot(x - sx, y - sy)
                 >= radius + game_settings.asteroid_ship_clearance
+                for sx, sy in ship_spawns
             )
             clear_of_others = all(
                 math.hypot(x - px, y - py)
                 >= radius + pr + game_settings.asteroid_min_gap
                 for px, py, pr in placed
             )
-            if clear_of_ship and clear_of_others:
+            if clear_of_ships and clear_of_others:
                 break
 
         placed.append((x, y, radius))
