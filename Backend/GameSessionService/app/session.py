@@ -180,7 +180,9 @@ class GameSession:
             return
         message = self.to_broadcast_message().model_dump()
         dead: list[str] = []
-        for player_id, websocket in self.connections.items():
+        # Snapshot: send_json yields, and register/unregister run on other
+        # tasks — mutating self.connections mid-iteration would raise.
+        for player_id, websocket in list(self.connections.items()):
             try:
                 await websocket.send_json(message)
             except (WebSocketDisconnect, RuntimeError):

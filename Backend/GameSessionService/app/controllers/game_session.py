@@ -59,9 +59,9 @@ class SessionManager:
             await self._reject(websocket, "room_full")
             return
 
-        session.register(player_id, websocket)
-        await websocket.send_json(session.to_init_message().model_dump())
         try:
+            session.register(player_id, websocket)
+            await websocket.send_json(session.to_init_message().model_dump())
             while True:
                 raw = await websocket.receive_text()
                 try:
