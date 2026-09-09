@@ -56,27 +56,62 @@ async def test_get_or_create_reuses_existing_session() -> None:
 
 
 @pytest.mark.asyncio
-async def test_second_connection_to_owned_room_is_rejected() -> None:
+async def test_duplicate_player_id_to_owned_room_is_rejected() -> None:
     manager = SessionManager()
     ws1 = FakeWebSocket()
-    task1 = asyncio.create_task(manager.handle_connection(ws1, "room-1"))
+    task1 = asyncio.create_task(manager.handle_connection(ws1, "room-1", "p1"))
     await asyncio.sleep(0.02)
 
     ws2 = FakeWebSocket()
-    await manager.handle_connection(ws2, "room-1")
+    await manager.handle_connection(ws2, "room-1", "p1")
 
     assert ws2.closed_code == ROOM_FULL_CLOSE_CODE
-    assert ws2.sent[-1]["reason"] == "room_full"
+    assert ws2.sent[-1]["reason"] == "duplicate_player"
 
     ws1.disconnect()
     await task1
 
 
 @pytest.mark.asyncio
+async def test_eleventh_player_to_a_full_room_is_rejected() -> None:
+    manager = SessionManager()
+    tasks = []
+    sockets = []
+    for i in range(10):
+        ws = FakeWebSocket()
+        sockets.append(ws)
+        tasks.append(
+            asyncio.create_task(manager.handle_connection(ws, "room-1", f"p{i}"))
+        )
+    await asyncio.sleep(0.02)
+
+    overflow_ws = FakeWebSocket()
+    await manager.handle_connection(overflow_ws, "room-1", "p-overflow")
+
+    assert overflow_ws.closed_code == ROOM_FULL_CLOSE_CODE
+    assert overflow_ws.sent[-1]["reason"] == "room_full"
+
+    for ws in sockets:
+        ws.disconnect()
+    await asyncio.gather(*tasks)
+
+
+@pytest.mark.asyncio
+async def test_invalid_player_id_is_rejected() -> None:
+    manager = SessionManager()
+    ws = FakeWebSocket()
+
+    await manager.handle_connection(ws, "room-1", "has a space")
+
+    assert ws.closed_code == ROOM_FULL_CLOSE_CODE
+    assert ws.sent[-1]["reason"] == "invalid_player_id"
+
+
+@pytest.mark.asyncio
 async def test_session_and_task_removed_when_room_becomes_empty() -> None:
     manager = SessionManager()
     ws = FakeWebSocket()
-    task = asyncio.create_task(manager.handle_connection(ws, "room-1"))
+    task = asyncio.create_task(manager.handle_connection(ws, "room-1", "p1"))
     await asyncio.sleep(0.02)
 
     ws.disconnect()
@@ -90,7 +125,7 @@ async def test_session_and_task_removed_when_room_becomes_empty() -> None:
 async def test_malformed_input_is_ignored_connection_stays_open() -> None:
     manager = SessionManager()
     ws = FakeWebSocket()
-    task = asyncio.create_task(manager.handle_connection(ws, "room-1"))
+    task = asyncio.create_task(manager.handle_connection(ws, "room-1", "p1"))
     await asyncio.sleep(0.02)
 
     ws.send_input("not json")

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 
 from fastapi import WebSocket
 from pydantic import ValidationError
@@ -10,6 +11,7 @@ from app.models.messages import InputMessage
 from app.session import GameSession
 
 ROOM_FULL_CLOSE_CODE = 4409
+PLAYER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
 
 class SessionManager:
@@ -34,16 +36,30 @@ class SessionManager:
             task.cancel()
         self._sessions.pop(room_id, None)
 
-    async def handle_connection(self, websocket: WebSocket, room_id: str) -> None:
-        await websocket.accept()
-        session = self.get_or_create(room_id)
+    async def _reject(self, websocket: WebSocket, reason: str) -> None:
+        await websocket.send_json({"type": "error", "reason": reason})
+        await websocket.close(code=ROOM_FULL_CLOSE_CODE)
 
-        if session.connections:
-            await websocket.send_json({"type": "error", "reason": "room_full"})
-            await websocket.close(code=ROOM_FULL_CLOSE_CODE)
+    async def handle_connection(
+        self, websocket: WebSocket, room_id: str, player_id: str
+    ) -> None:
+        await websocket.accept()
+
+        if not PLAYER_ID_PATTERN.match(player_id):
+            await self._reject(websocket, "invalid_player_id")
             return
 
-        session.register(websocket)
+        session = self.get_or_create(room_id)
+
+        if session.has_player(player_id):
+            await self._reject(websocket, "duplicate_player")
+            return
+
+        if session.is_full():
+            await self._reject(websocket, "room_full")
+            return
+
+        session.register(player_id, websocket)
         await websocket.send_json(session.to_init_message().model_dump())
         try:
             while True:
@@ -55,10 +71,10 @@ class SessionManager:
                         "Malformed input message on room %s: %r", room_id, raw
                     )
                     continue
-                session.set_input(websocket, message.thrust, message.turn)
+                session.set_input(player_id, message.thrust, message.turn)
         except WebSocketDisconnect:
             pass
         finally:
-            session.unregister(websocket)
+            session.unregister(player_id)
             if not session.connections:
                 self.remove(room_id)
