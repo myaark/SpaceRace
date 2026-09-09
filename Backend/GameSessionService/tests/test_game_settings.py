@@ -1,3 +1,5 @@
+import pytest
+
 from app.game_settings import GameSettings, game_settings
 
 
@@ -45,3 +47,24 @@ def test_defaults_include_belt_geometry() -> None:
     assert defaults.spawn_offset == (924.0, -1182.0)
     assert defaults.inner_fence_r == 1420.0
     assert defaults.outer_fence_r == 1760.0
+
+
+def test_defaults_include_room_capacity() -> None:
+    defaults = GameSettings()
+
+    assert defaults.max_players == 10
+
+
+def test_spawn_points_point_zero_matches_spawn_offset() -> None:
+    defaults = GameSettings()
+
+    assert defaults.spawn_points[0] == pytest.approx(defaults.spawn_offset)
+
+
+def test_spawn_points_are_evenly_distributed_and_unique() -> None:
+    defaults = GameSettings()
+
+    assert len(defaults.spawn_points) == defaults.max_players
+    assert len({tuple(round(v, 6) for v in p) for p in defaults.spawn_points}) == len(
+        defaults.spawn_points
+    )
