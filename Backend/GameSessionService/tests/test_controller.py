@@ -122,6 +122,40 @@ async def test_session_and_task_removed_when_room_becomes_empty() -> None:
 
 
 @pytest.mark.asyncio
+async def test_room_survives_partial_disconnect() -> None:
+    manager = SessionManager()
+    ws1 = FakeWebSocket()
+    ws2 = FakeWebSocket()
+    task1 = asyncio.create_task(manager.handle_connection(ws1, "room-1", "p1"))
+    task2 = asyncio.create_task(manager.handle_connection(ws2, "room-1", "p2"))
+    await asyncio.sleep(0.02)
+
+    session = manager._sessions["room-1"]
+    assert session.has_player("p1")
+    assert session.has_player("p2")
+
+    ws1.disconnect()
+    await task1
+    await asyncio.sleep(0.02)
+
+    # p1 leaving must not tear down a room p2 is still in.
+    assert manager._sessions["room-1"] is session
+    assert manager.get_or_create("room-1") is session
+    assert not manager._loop_tasks["room-1"].done()
+    assert not session.has_player("p1")
+    assert session.has_player("p2")
+    assert "p2" in session.connections
+    assert not task2.done()
+
+    ws2.disconnect()
+    await task2
+
+    assert "room-1" not in manager._sessions
+    assert manager.get_or_create("room-1") is not session  # a fresh one
+    manager.remove("room-1")
+
+
+@pytest.mark.asyncio
 async def test_malformed_input_is_ignored_connection_stays_open() -> None:
     manager = SessionManager()
     ws = FakeWebSocket()

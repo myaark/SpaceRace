@@ -177,6 +177,28 @@ def test_asteroids_do_not_overlap_each_other_or_a_spawned_ship(
             assert (pos_a - pos_b).length >= r_a + r_b - 1e-6
 
 
+def test_asteroids_clear_every_real_spawn_point(session: GameSession) -> None:
+    """The layout is generated once at construction against the full
+    game_settings.spawn_points list, so clearance must hold for all 10 real
+    spawn points — not just the slots that happen to be occupied."""
+    for i in range(game_settings.max_players):
+        session.register(f"p{i}", _DummyWebSocket())
+
+    spawn_positions = [
+        BELT_CENTER + pymunk.Vec2d(*p) for p in game_settings.spawn_points
+    ]
+    assert len(spawn_positions) == 10
+    assert len(session.ships) == len(spawn_positions)
+
+    for asteroid in session.asteroids.values():
+        for spawn in spawn_positions:
+            distance = (asteroid.body.position - spawn).length
+            assert (
+                distance
+                >= asteroid.radius + game_settings.asteroid_ship_clearance - 1e-6
+            )
+
+
 def test_asteroid_mass_scales_with_radius(session: GameSession) -> None:
     asteroids = sorted(session.asteroids.values(), key=lambda a: a.radius)
     small, large = asteroids[0], asteroids[-1]
