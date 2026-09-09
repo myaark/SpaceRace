@@ -26,3 +26,17 @@ def test_wrong_type_field_is_rejected() -> None:
 def test_malformed_json_is_rejected() -> None:
     with pytest.raises(ValidationError):
         InputMessage.model_validate_json("not json")
+
+
+def test_state_message_serializes_ships_list() -> None:
+    from app.models.messages import ShipState, StateMessage
+
+    state = StateMessage(
+        tick=1,
+        ships=[ShipState(id="p1", x=0, y=0, rotation=0, vx=0, vy=0)],
+        asteroids=[],
+    )
+
+    dumped = state.model_dump()
+    assert dumped["ships"][0]["id"] == "p1"
+    assert "ship" not in dumped

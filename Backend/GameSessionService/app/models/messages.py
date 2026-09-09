@@ -54,5 +54,5 @@ class StateMessage(BaseModel):
 
     type: Literal["state"] = "state"
     tick: int
-    ship: ShipState
+    ships: list[ShipState]
     asteroids: list[ShipState]
