@@ -14,13 +14,15 @@ def _generate_spawn_points(
     ox, oy = base_offset
     radius = math.hypot(ox, oy)
     base_angle = math.atan2(oy, ox)
-    return [
+    points = [base_offset]  # Point 0 is exact base_offset, not computed via trig
+    points.extend(
         (
             radius * math.cos(base_angle + 2 * math.pi * i / SPAWN_POINT_COUNT),
             radius * math.sin(base_angle + 2 * math.pi * i / SPAWN_POINT_COUNT),
         )
-        for i in range(SPAWN_POINT_COUNT)
-    ]
+        for i in range(1, SPAWN_POINT_COUNT)
+    )
+    return points
 
 
 @dataclass

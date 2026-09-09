@@ -55,6 +55,12 @@ def test_defaults_include_room_capacity() -> None:
     assert defaults.max_players == 10
 
 
+def test_spawn_points_point_zero_matches_spawn_offset_bit_exact() -> None:
+    defaults = GameSettings()
+
+    assert defaults.spawn_points[0] == defaults.spawn_offset
+
+
 def test_spawn_points_point_zero_matches_spawn_offset() -> None:
     defaults = GameSettings()
 
