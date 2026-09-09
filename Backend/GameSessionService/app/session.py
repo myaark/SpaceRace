@@ -23,16 +23,16 @@ class GameSession:
         self._belt_center = pymunk.Vec2d(*game_settings.belt_center)
         self._inner_fence_r = game_settings.inner_fence_r
         self._outer_fence_r = game_settings.outer_fence_r
-        self._spawn = self._belt_center + pymunk.Vec2d(*game_settings.spawn_offset)
-
-        self.ship = Ship("ship-1", (self._spawn.x, self._spawn.y))
-        self.space.add(self.ship.body, self.ship.shape)
+        self._spawn_points = [
+            self._belt_center + pymunk.Vec2d(*offset)
+            for offset in game_settings.spawn_points
+        ]
 
         layout = generate_asteroid_layout(
             (self._belt_center.x, self._belt_center.y),
             self._inner_fence_r,
             self._outer_fence_r,
-            (self._spawn.x, self._spawn.y),
+            [(p.x, p.y) for p in self._spawn_points],
         )
         self.asteroids: dict[str, Asteroid] = {}
         for asteroid_id, x, y, r, drift, period in layout:
@@ -40,37 +40,57 @@ class GameSession:
             self.space.add(asteroid.body, asteroid.shape)
             self.asteroids[asteroid_id] = asteroid
 
-        self.connections: set[WebSocket] = set()
-        self.latest_input: dict[WebSocket, dict] = {}
-        self._active_client: WebSocket | None = None
+        self.ships: dict[str, Ship] = {}
+        self.connections: dict[str, WebSocket] = {}
+        self.latest_input: dict[str, dict] = {}
+        self._spawn_index_by_player: dict[str, int] = {}
         self.tick_count = 0
         self._elapsed_ms = 0.0
 
-    def register(self, websocket: WebSocket) -> None:
-        self.connections.add(websocket)
+    def _next_free_spawn_index(self) -> int:
+        occupied = set(self._spawn_index_by_player.values())
+        for index in range(len(self._spawn_points)):
+            if index not in occupied:
+                return index
+        raise RuntimeError(f"room {self.room_id} has no free spawn point")
 
-    def unregister(self, websocket: WebSocket) -> None:
-        self.connections.discard(websocket)
-        self.latest_input.pop(websocket, None)
-        if self._active_client is websocket:
-            self._active_client = None
+    def is_full(self) -> bool:
+        return len(self.ships) >= game_settings.max_players
 
-    def set_input(self, websocket: WebSocket, thrust: int, turn: int) -> None:
-        self.latest_input[websocket] = {"thrust": thrust, "turn": turn}
-        self._active_client = websocket
+    def has_player(self, player_id: str) -> bool:
+        return player_id in self.ships
+
+    def register(self, player_id: str, websocket: WebSocket) -> None:
+        index = self._next_free_spawn_index()
+        position = self._spawn_points[index]
+        ship = Ship(player_id, (position.x, position.y))
+        self.space.add(ship.body, ship.shape)
+        self.ships[player_id] = ship
+        self._spawn_index_by_player[player_id] = index
+        self.connections[player_id] = websocket
+
+    def unregister(self, player_id: str) -> None:
+        ship = self.ships.pop(player_id, None)
+        if ship is not None:
+            self.space.remove(ship.body, ship.shape)
+        self.latest_input.pop(player_id, None)
+        self.connections.pop(player_id, None)
+        self._spawn_index_by_player.pop(player_id, None)
+
+    def set_input(self, player_id: str, thrust: int, turn: int) -> None:
+        self.latest_input[player_id] = {"thrust": thrust, "turn": turn}
 
     def _apply_input(self) -> None:
-        input_state = self.latest_input.get(
-            self._active_client, {"thrust": 0, "turn": 0}
-        )
-        thrust = input_state["thrust"]
-        turn = input_state["turn"]
+        for player_id, ship in self.ships.items():
+            input_state = self.latest_input.get(player_id, {"thrust": 0, "turn": 0})
+            thrust = input_state["thrust"]
+            turn = input_state["turn"]
 
-        if thrust:
-            self.ship.body.apply_force_at_local_point(
-                (thrust * game_settings.ship_thrust_force, 0), (0, 0)
-            )
-        self.ship.body.angular_velocity = turn * game_settings.ship_turn_rate
+            if thrust:
+                ship.body.apply_force_at_local_point(
+                    (thrust * game_settings.ship_thrust_force, 0), (0, 0)
+                )
+            ship.body.angular_velocity = turn * game_settings.ship_turn_rate
 
     def _clamp_speed(self, body: pymunk.Body, max_speed: float) -> None:
         speed = body.velocity.length
@@ -117,8 +137,9 @@ class GameSession:
         self._apply_drift()
         self.space.step(dt)
 
-        self._clamp_speed(self.ship.body, game_settings.ship_max_speed)
-        self._clamp_to_belt(self.ship.body)
+        for ship in self.ships.values():
+            self._clamp_speed(ship.body, game_settings.ship_max_speed)
+            self._clamp_to_belt(ship.body)
         for asteroid in self.asteroids.values():
             self._clamp_speed(asteroid.body, game_settings.asteroid_max_speed)
             self._clamp_to_belt(asteroid.body)
@@ -128,12 +149,15 @@ class GameSession:
     def to_init_message(self) -> InitMessage:
         """One-time layout message: asteroid radius never changes, but since
         the layout is now server-generated (not a hand-copied frontend
-        constant), the client needs it sent explicitly on connect."""
+        constant), the client needs it sent explicitly on connect. spawn_x/y
+        always describes spawn point 0 — the point the frontend hardcodes
+        for its own ship's pre-broadcast placement."""
+        spawn = self._spawn_points[0]
         return InitMessage(
             belt_center_x=self._belt_center.x,
             belt_center_y=self._belt_center.y,
-            spawn_x=self._spawn.x,
-            spawn_y=self._spawn.y,
+            spawn_x=spawn.x,
+            spawn_y=spawn.y,
             inner_r=self._inner_fence_r,
             outer_r=self._outer_fence_r,
             asteroids=[
@@ -147,7 +171,7 @@ class GameSession:
     def to_broadcast_message(self) -> StateMessage:
         return StateMessage(
             tick=self.tick_count,
-            ship=ShipState(**self.ship.to_state()),
+            ships=[ShipState(**ship.to_state()) for ship in self.ships.values()],
             asteroids=[ShipState(**a.to_state()) for a in self.asteroids.values()],
         )
 
@@ -155,14 +179,16 @@ class GameSession:
         if not self.connections:
             return
         message = self.to_broadcast_message().model_dump()
-        dead: list[WebSocket] = []
-        for websocket in self.connections:
+        dead: list[str] = []
+        for player_id, websocket in self.connections.items():
             try:
                 await websocket.send_json(message)
             except (WebSocketDisconnect, RuntimeError):
                 self._logger.info(
-                    "Dropping disconnected client from room %s", self.room_id
+                    "Dropping disconnected client %s from room %s",
+                    player_id,
+                    self.room_id,
                 )
-                dead.append(websocket)
-        for websocket in dead:
-            self.unregister(websocket)
+                dead.append(player_id)
+        for player_id in dead:
+            self.unregister(player_id)

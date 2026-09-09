@@ -11,17 +11,23 @@ from app.session import GameSession
 BELT_CENTER = pymunk.Vec2d(*game_settings.belt_center)
 INNER_FENCE_R = game_settings.inner_fence_r
 OUTER_FENCE_R = game_settings.outer_fence_r
-SPAWN_OFFSET = pymunk.Vec2d(*game_settings.spawn_offset)
+SPAWN_POINT_0 = pymunk.Vec2d(*game_settings.spawn_points[0])
 
 TICK_DT = 1 / 20
+
+
+class _DummyWebSocket:
+    """Stand-in for fastapi.WebSocket in tests that don't exercise broadcast."""
 
 
 def _run_head_on_collision(
     asteroid_id: str, approach_speed: float, ticks: int = 5
 ) -> float:
-    """Places the ship on contact with the named asteroid, moving straight at
+    """Places a ship on contact with the named asteroid, moving straight at
     it, steps a few ticks, and returns the ship's resulting speed change."""
     session = GameSession("test-room")
+    session.register("p1", _DummyWebSocket())
+    ship = session.ships["p1"]
     target = session.asteroids[asteroid_id]
     target.drift = False  # isolate the collision from the drift force
 
@@ -29,14 +35,14 @@ def _run_head_on_collision(
     contact_distance = (
         target.radius + game_settings.ship_radius - 1
     )  # slight overlap to force contact on tick 1
-    session.ship.body.position = target.body.position - approach_dir * contact_distance
-    session.ship.body.velocity = approach_dir * approach_speed
-    initial_vx = session.ship.body.velocity.x
+    ship.body.position = target.body.position - approach_dir * contact_distance
+    ship.body.velocity = approach_dir * approach_speed
+    initial_vx = ship.body.velocity.x
 
     for _ in range(ticks):
         session.step(TICK_DT)
 
-    return abs(session.ship.body.velocity.x - initial_vx)
+    return abs(ship.body.velocity.x - initial_vx)
 
 
 @pytest.fixture
@@ -44,95 +50,113 @@ def session() -> GameSession:
     return GameSession("test-room")
 
 
-def test_ship_spawns_within_belt(session: GameSession) -> None:
-    distance = (session.ship.body.position - BELT_CENTER).length
+@pytest.fixture
+def ship(session: GameSession):
+    session.register("p1", _DummyWebSocket())
+    return session.ships["p1"]
+
+
+def test_ship_spawns_within_belt(session: GameSession, ship) -> None:
+    distance = (ship.body.position - BELT_CENTER).length
     assert INNER_FENCE_R <= distance <= OUTER_FENCE_R
 
 
 def test_boundary_clamp_keeps_ship_pushed_outward_within_belt(
-    session: GameSession,
+    session: GameSession, ship
 ) -> None:
     outward_dir = pymunk.Vec2d(0, -1)
-    session.ship.body.position = BELT_CENTER + outward_dir * OUTER_FENCE_R
-    session.ship.body.velocity = outward_dir * 5000  # far exceeds the fence radially
+    ship.body.position = BELT_CENTER + outward_dir * OUTER_FENCE_R
+    ship.body.velocity = outward_dir * 5000  # far exceeds the fence radially
 
     session.step(TICK_DT)
 
-    distance = (session.ship.body.position - BELT_CENTER).length
+    distance = (ship.body.position - BELT_CENTER).length
     assert INNER_FENCE_R <= distance <= OUTER_FENCE_R + 1e-6
-    # radial component of velocity should have been zeroed out
-    radial_component = session.ship.body.velocity.dot(outward_dir)
+    radial_component = ship.body.velocity.dot(outward_dir)
     assert radial_component <= 1e-6
 
 
 def test_boundary_clamp_keeps_ship_pushed_inward_within_belt(
-    session: GameSession,
+    session: GameSession, ship
 ) -> None:
     inward_dir = pymunk.Vec2d(0, -1)
-    session.ship.body.position = BELT_CENTER + inward_dir * INNER_FENCE_R
-    session.ship.body.velocity = -inward_dir * 5000  # heading toward the center
+    ship.body.position = BELT_CENTER + inward_dir * INNER_FENCE_R
+    ship.body.velocity = -inward_dir * 5000  # heading toward the center
 
     session.step(TICK_DT)
 
-    distance = (session.ship.body.position - BELT_CENTER).length
+    distance = (ship.body.position - BELT_CENTER).length
     assert INNER_FENCE_R - 1e-6 <= distance <= OUTER_FENCE_R
 
 
 def test_boundary_clamp_does_not_kill_velocity_heading_back_into_belt(
-    session: GameSession,
+    session: GameSession, ship
 ) -> None:
     outward_dir = pymunk.Vec2d(0, -1)
-    session.ship.body.position = BELT_CENTER + outward_dir * (OUTER_FENCE_R + 50)
-    session.ship.body.velocity = -outward_dir * 500  # already heading back inward
+    ship.body.position = BELT_CENTER + outward_dir * (OUTER_FENCE_R + 50)
+    ship.body.velocity = -outward_dir * 500  # already heading back inward
 
     session.step(TICK_DT)
 
-    # the inward radial component must survive the clamp (only ambient
-    # damping should shrink it) instead of being zeroed by the fence
-    radial_component = session.ship.body.velocity.dot(outward_dir)
+    radial_component = ship.body.velocity.dot(outward_dir)
     assert radial_component < -50
 
 
-def test_thrust_input_applies_velocity(session: GameSession) -> None:
-    client = object()
-    assert session.ship.body.velocity.length == 0
+def test_thrust_input_applies_velocity(session: GameSession, ship) -> None:
+    assert ship.body.velocity.length == 0
 
-    session.set_input(client, thrust=1, turn=0)
+    session.set_input("p1", thrust=1, turn=0)
     session.step(TICK_DT)
 
-    assert session.ship.body.velocity.length > 0
+    assert ship.body.velocity.length > 0
 
 
-def test_no_input_leaves_ship_at_rest(session: GameSession) -> None:
+def test_no_input_leaves_ship_at_rest(session: GameSession, ship) -> None:
     session.step(TICK_DT)
 
-    assert session.ship.body.velocity.length == 0
+    assert ship.body.velocity.length == 0
 
 
-def test_turn_input_sets_angular_velocity(session: GameSession) -> None:
-    client = object()
-
-    session.set_input(client, thrust=0, turn=1)
+def test_turn_input_sets_angular_velocity(session: GameSession, ship) -> None:
+    session.set_input("p1", thrust=0, turn=1)
     session.step(TICK_DT)
 
-    assert session.ship.body.angular_velocity > 0
+    assert ship.body.angular_velocity > 0
 
 
-def test_ship_spawns_at_frontend_design_point(session: GameSession) -> None:
-    expected = BELT_CENTER + SPAWN_OFFSET
+def test_ship_spawns_at_frontend_design_point(session: GameSession, ship) -> None:
+    expected = BELT_CENTER + SPAWN_POINT_0
 
-    assert session.ship.body.position.x == pytest.approx(expected.x)
-    assert session.ship.body.position.y == pytest.approx(expected.y)
+    assert ship.body.position.x == pytest.approx(expected.x)
+    assert ship.body.position.y == pytest.approx(expected.y)
 
 
-def test_speed_is_clamped_to_max(session: GameSession) -> None:
-    client = object()
-    session.set_input(client, thrust=1, turn=0)
+def test_second_ship_spawns_at_a_different_point_than_the_first(
+    session: GameSession,
+) -> None:
+    session.register("p1", _DummyWebSocket())
+    session.register("p2", _DummyWebSocket())
+
+    assert session.ships["p1"].body.position != session.ships["p2"].body.position
+
+
+def test_spawn_index_is_reused_after_a_player_leaves(session: GameSession) -> None:
+    session.register("p1", _DummyWebSocket())
+    first_position = session.ships["p1"].body.position
+    session.unregister("p1")
+
+    session.register("p2", _DummyWebSocket())
+
+    assert session.ships["p2"].body.position == first_position
+
+
+def test_speed_is_clamped_to_max(session: GameSession, ship) -> None:
+    session.set_input("p1", thrust=1, turn=0)
 
     for _ in range(200):
         session.step(TICK_DT)
 
-    assert session.ship.body.velocity.length <= game_settings.ship_max_speed + 1e-6
+    assert ship.body.velocity.length <= game_settings.ship_max_speed + 1e-6
 
 
 def test_asteroids_spawn_within_belt_annulus(session: GameSession) -> None:
@@ -142,11 +166,11 @@ def test_asteroids_spawn_within_belt_annulus(session: GameSession) -> None:
         assert INNER_FENCE_R - 1e-6 <= distance <= OUTER_FENCE_R + 1e-6
 
 
-def test_asteroids_do_not_overlap_each_other_or_the_ship(
-    session: GameSession,
+def test_asteroids_do_not_overlap_each_other_or_a_spawned_ship(
+    session: GameSession, ship
 ) -> None:
     bodies = [(a.body.position, a.radius) for a in session.asteroids.values()]
-    bodies.append((session.ship.body.position, game_settings.ship_radius))
+    bodies.append((ship.body.position, game_settings.ship_radius))
 
     for i, (pos_a, r_a) in enumerate(bodies):
         for pos_b, r_b in bodies[i + 1 :]:
@@ -191,38 +215,36 @@ def test_drifting_asteroids_stay_within_belt_annulus() -> None:
 
 
 def test_ship_decays_to_rest_quickly_after_thrust_released(
-    session: GameSession,
+    session: GameSession, ship
 ) -> None:
-    client = object()
-    session.set_input(client, thrust=1, turn=0)
+    session.set_input("p1", thrust=1, turn=0)
     for _ in range(20):
         session.step(TICK_DT)
-    peak_speed = session.ship.body.velocity.length
+    peak_speed = ship.body.velocity.length
     assert peak_speed > 0
 
-    session.set_input(client, thrust=0, turn=0)
+    session.set_input("p1", thrust=0, turn=0)
     for _ in range(6):
         session.step(TICK_DT)
 
-    assert session.ship.body.velocity.length <= peak_speed * 0.1
+    assert ship.body.velocity.length <= peak_speed * 0.1
 
 
 def test_ship_max_speed_change_is_reflected_live_per_tick(
-    session: GameSession,
+    session: GameSession, ship
 ) -> None:
     """Live-tunable field: mutating game_settings.ship_max_speed should
     change the clamp applied on the very next tick of an already-constructed
     GameSession, proving the value is re-read per tick rather than baked in
     at construction time."""
-    client = object()
-    session.set_input(client, thrust=1, turn=0)
+    session.set_input("p1", thrust=1, turn=0)
     original = game_settings.ship_max_speed
     try:
         game_settings.ship_max_speed = 10.0
         for _ in range(200):
             session.step(TICK_DT)
-        assert session.ship.body.velocity.length <= game_settings.ship_max_speed + 1e-6
-        assert session.ship.body.velocity.length < original
+        assert ship.body.velocity.length <= game_settings.ship_max_speed + 1e-6
+        assert ship.body.velocity.length < original
     finally:
         game_settings.ship_max_speed = original
 
@@ -234,7 +256,7 @@ def test_broadcast_uses_injected_logger_on_dropped_client(caplog) -> None:
 
     custom_logger = logging.getLogger("test-custom-logger")
     session = GameSession("test-room", logger=custom_logger)
-    session.connections.add(_FailingWebSocket())
+    session.register("p1", _FailingWebSocket())
 
     with caplog.at_level(logging.INFO, logger="test-custom-logger"):
         asyncio.run(session.broadcast())
@@ -242,6 +264,7 @@ def test_broadcast_uses_injected_logger_on_dropped_client(caplog) -> None:
     assert len(caplog.records) == 1
     assert caplog.records[0].name == "test-custom-logger"
     assert "test-room" in caplog.records[0].getMessage()
+    assert "p1" not in session.ships  # dropped client is unregistered
 
 
 def test_to_init_message_includes_belt_geometry_and_asteroids(
@@ -252,17 +275,61 @@ def test_to_init_message_includes_belt_geometry_and_asteroids(
     assert isinstance(init, InitMessage)
     assert init.belt_center_x == pytest.approx(BELT_CENTER.x)
     assert init.belt_center_y == pytest.approx(BELT_CENTER.y)
-    assert init.spawn_x == pytest.approx((BELT_CENTER + SPAWN_OFFSET).x)
-    assert init.spawn_y == pytest.approx((BELT_CENTER + SPAWN_OFFSET).y)
+    assert init.spawn_x == pytest.approx((BELT_CENTER + SPAWN_POINT_0).x)
+    assert init.spawn_y == pytest.approx((BELT_CENTER + SPAWN_POINT_0).y)
     assert init.inner_r == INNER_FENCE_R
     assert init.outer_r == OUTER_FENCE_R
     assert len(init.asteroids) == len(session.asteroids)
 
 
-def test_to_broadcast_message_returns_typed_state(session: GameSession) -> None:
+def test_to_broadcast_message_returns_typed_state_for_every_ship(
+    session: GameSession,
+) -> None:
+    session.register("p1", _DummyWebSocket())
+    session.register("p2", _DummyWebSocket())
+
     state = session.to_broadcast_message()
 
     assert isinstance(state, StateMessage)
     assert state.tick == session.tick_count
-    assert state.ship.id == session.ship.id
+    assert {s.id for s in state.ships} == {"p1", "p2"}
     assert len(state.asteroids) == len(session.asteroids)
+
+
+def test_is_full_true_at_max_players(session: GameSession) -> None:
+    for i in range(game_settings.max_players):
+        session.register(f"p{i}", _DummyWebSocket())
+
+    assert session.is_full()
+
+
+def test_has_player_reflects_registration(session: GameSession) -> None:
+    assert not session.has_player("p1")
+    session.register("p1", _DummyWebSocket())
+    assert session.has_player("p1")
+    session.unregister("p1")
+    assert not session.has_player("p1")
+
+
+def test_unregister_removes_ship_body_from_physics_space(
+    session: GameSession,
+) -> None:
+    session.register("p1", _DummyWebSocket())
+    ship = session.ships["p1"]
+
+    session.unregister("p1")
+
+    assert ship.body not in session.space.bodies
+    assert ship.shape not in session.space.shapes
+
+
+def test_each_ship_applies_its_own_independent_input(session: GameSession) -> None:
+    session.register("p1", _DummyWebSocket())
+    session.register("p2", _DummyWebSocket())
+
+    session.set_input("p1", thrust=1, turn=0)
+    session.set_input("p2", thrust=0, turn=0)
+    session.step(TICK_DT)
+
+    assert session.ships["p1"].body.velocity.length > 0
+    assert session.ships["p2"].body.velocity.length == 0
