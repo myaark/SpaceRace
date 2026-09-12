@@ -28,7 +28,13 @@ const INNER_FENCE_R = 1420
 const PLANET_R = 1300
 
 // Fixed dev room — matchmaking isn't wired up yet (see design spec non-goals).
-const GAME_SESSION_WS_URL = 'ws://localhost:8000/ws/dev-room'
+const GAME_SESSION_WS_BASE_URL = 'ws://localhost:8000/ws/dev-room'
+
+// Backend requires player_id to match ^[A-Za-z0-9_-]{1,32}$ — see
+// GameSessionService's controllers/game_session.py PLAYER_ID_PATTERN.
+function generatePlayerId() {
+  return `player-${Math.random().toString(36).slice(2, 10)}`
+}
 
 const SALVAGE = { x: 804, y: 385, r: 64 }
 const HOSTILE = { x: 627, y: 177, w: 70, h: 70 }
@@ -55,15 +61,43 @@ export default class BeltScene extends Phaser.Scene {
     // hardcoded local constant — populated once the "init" message arrives.
     this.remoteAsteroids = new Map()
 
-    this.remoteShip = new RemoteShip(this, SHIP.x, SHIP.y)
-    this.gameSocket = new GameSocket(GAME_SESSION_WS_URL)
+    // Ships are keyed by the player_id the server assigned them (see
+    // ShipState.id) — a room can hold more than one independently
+    // controlled ship, so this is a Map like remoteAsteroids, not a
+    // single instance.
+    this.remoteShips = new Map()
+    this.playerId = generatePlayerId()
+    // Placeholder art shown before our own ship first appears in a state
+    // broadcast; the camera follows this until our ship id shows up.
+    this.placeholderShip = new RemoteShip(this, SHIP.x, SHIP.y)
+
+    this.gameSocket = new GameSocket(`${GAME_SESSION_WS_BASE_URL}?player_id=${this.playerId}`)
     this.gameSocket.onInit((msg) => {
       for (const a of msg.asteroids) {
         this.remoteAsteroids.set(a.id, new RemoteAsteroid(this, a.x, a.y, a.r))
       }
     })
     this.gameSocket.onState((msg) => {
-      this.remoteShip.applyState(msg.ship)
+      const seen = new Set()
+      for (const shipState of msg.ships) {
+        seen.add(shipState.id)
+        let ship = this.remoteShips.get(shipState.id)
+        if (!ship) {
+          ship = new RemoteShip(this, shipState.x, shipState.y)
+          this.remoteShips.set(shipState.id, ship)
+          if (shipState.id === this.playerId) {
+            this.placeholderShip.destroy()
+            this.cameras.main.startFollow(ship, true, 0.08, 0.08)
+          }
+        }
+        ship.applyState(shipState)
+      }
+      for (const [id, ship] of this.remoteShips) {
+        if (!seen.has(id)) {
+          ship.destroy()
+          this.remoteShips.delete(id)
+        }
+      }
       for (const asteroidState of msg.asteroids) {
         this.remoteAsteroids.get(asteroidState.id)?.applyState(asteroidState)
       }
@@ -87,7 +121,7 @@ export default class BeltScene extends Phaser.Scene {
       OUTER_FENCE_R * 2,
       OUTER_FENCE_R * 2,
     )
-    this.cameras.main.startFollow(this.remoteShip, true, 0.08, 0.08)
+    this.cameras.main.startFollow(this.placeholderShip, true, 0.08, 0.08)
   }
 
   update() {
