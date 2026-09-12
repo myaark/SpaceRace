@@ -5,6 +5,9 @@ import pymunk
 
 from app.game_settings import game_settings
 
+SHIP_COLLISION_TYPE = 1
+ASTEROID_COLLISION_TYPE = 2
+
 
 def generate_asteroid_layout(
     center: tuple[float, float],
@@ -13,7 +16,7 @@ def generate_asteroid_layout(
     ship_spawns: list[tuple[float, float]],
     count: int | None = None,
     seed: int | None = None,
-) -> list[tuple[str, float, float, float, bool, float | None]]:
+) -> list[tuple[str, float, float, float, str, bool, float | None]]:
     """Scatters `count` asteroids across the belt annulus around `center`.
 
     Deterministic for a given seed. Uses rejection sampling to keep
@@ -21,18 +24,22 @@ def generate_asteroid_layout(
     each candidate is retried (up to game_settings.asteroid_placement_attempts
     times) until it clears both, falling back to the last candidate if that
     cap is hit (the annulus is large relative to asteroid size, so this is
-    rare). Returns (id, x, y, r, drift, period) tuples, matching the old
-    ASTEROID_DEFS shape.
+    rare). Each asteroid's tier is sampled uniformly from
+    game_settings.asteroid_tiers and its radius is that tier's fixed radius.
+    Returns (id, x, y, r, tier, drift, period) tuples.
     """
     count = game_settings.asteroid_count if count is None else count
     seed = game_settings.asteroid_layout_seed if seed is None else seed
     rng = random.Random(seed)
     cx, cy = center
     placed: list[tuple[float, float, float]] = []  # (x, y, r)
-    layout: list[tuple[str, float, float, float, bool, float | None]] = []
+    layout: list[tuple[str, float, float, float, str, bool, float | None]] = []
+
+    tier_names = list(game_settings.asteroid_tiers.keys())
 
     for i in range(count):
-        radius = rng.uniform(game_settings.asteroid_min_r, game_settings.asteroid_max_r)
+        tier = rng.choice(tier_names)
+        radius = game_settings.asteroid_tiers[tier]["radius"]
         x = y = 0.0
         for _ in range(game_settings.asteroid_placement_attempts):
             angle = rng.uniform(0, 2 * math.pi)
@@ -58,7 +65,7 @@ def generate_asteroid_layout(
         period = (
             rng.uniform(*game_settings.asteroid_drift_period_range) if drift else None
         )
-        layout.append((f"ast-{i + 1}", x, y, radius, drift, period))
+        layout.append((f"ast-{i + 1}", x, y, radius, tier, drift, period))
 
     return layout
 
@@ -76,6 +83,10 @@ class Ship:
         self.shape = pymunk.Circle(self.body, game_settings.ship_radius)
         self.shape.elasticity = game_settings.collision_elasticity
         self.shape.friction = game_settings.collision_friction
+        self.shape.collision_type = SHIP_COLLISION_TYPE
+        self.max_hp = game_settings.ship_max_hp
+        self.hp = self.max_hp
+        self.alive = True
 
     def to_state(self) -> dict:
         return {
@@ -85,6 +96,9 @@ class Ship:
             "rotation": self.body.angle,
             "vx": self.body.velocity.x,
             "vy": self.body.velocity.y,
+            "hp": self.hp,
+            "max_hp": self.max_hp,
+            "alive": self.alive,
         }
 
 
@@ -96,11 +110,13 @@ class Asteroid:
         asteroid_id: str,
         position: tuple[float, float],
         radius: float,
+        tier: str,
         drift: bool = False,
         period: float | None = None,
     ) -> None:
         self.id = asteroid_id
         self.radius = radius
+        self.tier = tier
         self.drift = drift
         self.period = period
         mass = game_settings.asteroid_density * radius**2
@@ -110,6 +126,9 @@ class Asteroid:
         self.shape = pymunk.Circle(self.body, radius)
         self.shape.elasticity = game_settings.collision_elasticity
         self.shape.friction = game_settings.collision_friction
+        self.shape.collision_type = ASTEROID_COLLISION_TYPE
+        self.max_hp = game_settings.asteroid_tiers[tier]["hp"]
+        self.hp = self.max_hp
 
     def to_state(self) -> dict:
         return {
@@ -119,4 +138,6 @@ class Asteroid:
             "rotation": self.body.angle,
             "vx": self.body.velocity.x,
             "vy": self.body.velocity.y,
+            "hp": self.hp,
+            "max_hp": self.max_hp,
         }

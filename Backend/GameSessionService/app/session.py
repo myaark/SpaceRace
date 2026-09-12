@@ -35,8 +35,8 @@ class GameSession:
             [(p.x, p.y) for p in self._spawn_points],
         )
         self.asteroids: dict[str, Asteroid] = {}
-        for asteroid_id, x, y, r, drift, period in layout:
-            asteroid = Asteroid(asteroid_id, (x, y), r, drift, period)
+        for asteroid_id, x, y, r, tier, drift, period in layout:
+            asteroid = Asteroid(asteroid_id, (x, y), r, tier, drift, period)
             self.space.add(asteroid.body, asteroid.shape)
             self.asteroids[asteroid_id] = asteroid
 
