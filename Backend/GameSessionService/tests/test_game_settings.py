@@ -22,8 +22,6 @@ def test_defaults_match_original_constants() -> None:
 
     assert defaults.asteroid_count == 45
     assert defaults.asteroid_layout_seed == 42
-    assert defaults.asteroid_min_r == 26.0
-    assert defaults.asteroid_max_r == 48.0
     assert defaults.asteroid_drift_chance == 0.5
     assert defaults.asteroid_drift_period_range == (15000.0, 30000.0)
     assert defaults.asteroid_min_gap == 10.0
@@ -74,3 +72,23 @@ def test_spawn_points_are_evenly_distributed_and_unique() -> None:
     assert len({tuple(round(v, 6) for v in p) for p in defaults.spawn_points}) == len(
         defaults.spawn_points
     )
+
+
+def test_defaults_include_combat_tunables() -> None:
+    defaults = GameSettings()
+
+    assert defaults.bullet_speed == 500.0
+    assert defaults.bullet_lifetime_ms == 2000.0
+    assert defaults.bullet_damage_to_asteroid == 10
+    assert defaults.bullet_damage_to_ship == 10
+    assert defaults.ship_max_hp == 100
+
+    assert defaults.asteroid_tiers == {
+        "large": {"radius": 48.0, "hp": 30},
+        "medium": {"radius": 34.0, "hp": 15},
+        "small": {"radius": 20.0, "hp": 5},
+    }
+    assert defaults.asteroid_fragment_impulse == 80.0
+
+    assert defaults.ram_damage_by_tier == {"large": 20, "medium": 12, "small": 5}
+    assert defaults.ram_cooldown_ms == 500.0

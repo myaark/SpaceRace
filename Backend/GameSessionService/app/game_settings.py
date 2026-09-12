@@ -66,13 +66,39 @@ class GameSettings:
     # only — not live, since layout is generated once per session).
     asteroid_count: int = 45
     asteroid_layout_seed: int = 42
-    asteroid_min_r: float = 26.0
-    asteroid_max_r: float = 48.0
+    # Fixed size/HP tiers — replaces the old continuous asteroid_min_r/
+    # asteroid_max_r range. generate_asteroid_layout samples a tier per
+    # asteroid instead of a continuous radius.
+    asteroid_tiers: dict[str, dict[str, float]] = field(
+        default_factory=lambda: {
+            "large": {"radius": 48.0, "hp": 30},
+            "medium": {"radius": 34.0, "hp": 15},
+            "small": {"radius": 20.0, "hp": 5},
+        }
+    )
     asteroid_drift_chance: float = 0.5
     asteroid_drift_period_range: tuple[float, float] = (15000.0, 30000.0)  # ms
     asteroid_min_gap: float = 10.0  # px clearance between any two asteroids
     asteroid_ship_clearance: float = 150.0  # px clearance around each ship spawn point
     asteroid_placement_attempts: int = 500  # per asteroid, before giving up
+
+    # Bullets
+    bullet_speed: float = 500.0  # muzzle speed added along facing direction, px/sec
+    bullet_lifetime_ms: float = 2000.0
+    bullet_damage_to_asteroid: int = 10
+    bullet_damage_to_ship: int = 10
+
+    # Ship health
+    ship_max_hp: int = 100
+
+    # Fragmentation
+    asteroid_fragment_impulse: float = 80.0  # outward push on fragment children, px/sec
+
+    # Ship-asteroid ram damage (pymunk collision handler, see session.py)
+    ram_damage_by_tier: dict[str, int] = field(
+        default_factory=lambda: {"large": 20, "medium": 12, "small": 5}
+    )
+    ram_cooldown_ms: float = 500.0  # per (ship, asteroid) pair, prevents re-damage every tick of sustained contact
 
     # Belt boundary geometry. Must match Frontend/src/scenes/BeltScene.js's
     # BELT_CENTER / OUTER_FENCE_R / INNER_FENCE_R — there is no shared-schema
