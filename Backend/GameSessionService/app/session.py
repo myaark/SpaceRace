@@ -5,7 +5,15 @@ import pymunk
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from app.entities import Asteroid, Ship, generate_asteroid_layout
+from app import combat
+from app.combat import Bullet
+from app.entities import (
+    ASTEROID_COLLISION_TYPE,
+    SHIP_COLLISION_TYPE,
+    Asteroid,
+    Ship,
+    generate_asteroid_layout,
+)
 from app.game_settings import game_settings
 from app.models.messages import AsteroidInit, InitMessage, ShipState, StateMessage
 
@@ -46,6 +54,8 @@ class GameSession:
         self._spawn_index_by_player: dict[str, int] = {}
         self.tick_count = 0
         self._elapsed_ms = 0.0
+        self.bullets: dict[str, Bullet] = {}
+        self._bullet_seq = 0
 
     def _next_free_spawn_index(self) -> int:
         occupied = set(self._spawn_index_by_player.values())
@@ -77,12 +87,16 @@ class GameSession:
         self.connections.pop(player_id, None)
         self._spawn_index_by_player.pop(player_id, None)
 
-    def set_input(self, player_id: str, thrust: int, turn: int) -> None:
-        self.latest_input[player_id] = {"thrust": thrust, "turn": turn}
+    def set_input(self, player_id: str, thrust: int, turn: int, fire: bool = False) -> None:
+        self.latest_input[player_id] = {"thrust": thrust, "turn": turn, "fire": fire}
 
     def _apply_input(self) -> None:
         for player_id, ship in self.ships.items():
-            input_state = self.latest_input.get(player_id, {"thrust": 0, "turn": 0})
+            if not ship.alive:
+                continue
+            input_state = self.latest_input.get(
+                player_id, {"thrust": 0, "turn": 0, "fire": False}
+            )
             thrust = input_state["thrust"]
             turn = input_state["turn"]
 
@@ -91,6 +105,18 @@ class GameSession:
                     (thrust * game_settings.ship_thrust_force, 0), (0, 0)
                 )
             ship.body.angular_velocity = turn * game_settings.ship_turn_rate
+
+    def _spawn_bullets(self) -> None:
+        for player_id, ship in self.ships.items():
+            if not ship.alive:
+                continue
+            input_state = self.latest_input.get(player_id)
+            if input_state is None or not input_state["fire"]:
+                continue
+            self._bullet_seq += 1
+            bullet_id = f"blt-{player_id}-{self._bullet_seq}"
+            bullet = combat.spawn_bullet(bullet_id, player_id, ship, self._elapsed_ms)
+            self.bullets[bullet_id] = bullet
 
     def _clamp_speed(self, body: pymunk.Body, max_speed: float) -> None:
         speed = body.velocity.length
@@ -134,6 +160,7 @@ class GameSession:
         """Advance physics by one tick: apply input, integrate, enforce the belt boundary."""
         self._elapsed_ms += dt * 1000
         self._apply_input()
+        self._spawn_bullets()
         self._apply_drift()
         self.space.step(dt)
 

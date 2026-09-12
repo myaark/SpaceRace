@@ -355,3 +355,63 @@ def test_each_ship_applies_its_own_independent_input(session: GameSession) -> No
 
     assert session.ships["p1"].body.velocity.length > 0
     assert session.ships["p2"].body.velocity.length == 0
+
+
+def test_fire_input_spawns_a_bullet(session: GameSession, ship) -> None:
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+
+    session.step(TICK_DT)
+
+    assert len(session.bullets) == 1
+
+
+def test_no_fire_input_spawns_no_bullet(session: GameSession, ship) -> None:
+    session.set_input("p1", thrust=0, turn=0)
+
+    session.step(TICK_DT)
+
+    assert len(session.bullets) == 0
+
+
+def test_held_fire_input_spawns_one_bullet_per_tick(session: GameSession, ship) -> None:
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+
+    session.step(TICK_DT)
+    session.step(TICK_DT)
+    session.step(TICK_DT)
+
+    assert len(session.bullets) == 3
+
+
+def test_dead_ship_does_not_spawn_bullets(session: GameSession, ship) -> None:
+    ship.alive = False
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+
+    session.step(TICK_DT)
+
+    assert len(session.bullets) == 0
+
+
+def test_bullet_spawns_at_ships_position_facing_direction(
+    session: GameSession, ship
+) -> None:
+    ship.body.angle = 0.0
+    origin = ship.body.position
+
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+    session.step(TICK_DT)
+
+    bullet = next(iter(session.bullets.values()))
+    assert bullet.owner_id == "p1"
+    assert bullet.x == pytest.approx(origin.x + game_settings.ship_radius)
+    assert bullet.y == pytest.approx(origin.y)
+
+
+def test_dead_ship_ignores_thrust_and_turn_input(session: GameSession, ship) -> None:
+    ship.alive = False
+    session.set_input("p1", thrust=1, turn=1)
+
+    session.step(TICK_DT)
+
+    assert ship.body.velocity.length == 0
+    assert ship.body.angular_velocity == 0
