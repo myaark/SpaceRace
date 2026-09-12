@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 
 import pymunk
 import pytest
@@ -403,7 +404,12 @@ def test_bullet_spawns_at_ships_position_facing_direction(
 
     bullet = next(iter(session.bullets.values()))
     assert bullet.owner_id == "p1"
-    assert bullet.x == pytest.approx(origin.x + game_settings.ship_radius)
+    # A bullet advances in the same tick it spawns (spawn -> advance/expire
+    # is the tick order), so its position after step() already includes one
+    # tick's worth of travel along the facing direction.
+    assert bullet.x == pytest.approx(
+        origin.x + game_settings.ship_radius + game_settings.bullet_speed * TICK_DT
+    )
     assert bullet.y == pytest.approx(origin.y)
 
 
@@ -415,3 +421,111 @@ def test_dead_ship_ignores_thrust_and_turn_input(session: GameSession, ship) -> 
 
     assert ship.body.velocity.length == 0
     assert ship.body.angular_velocity == 0
+
+
+def test_bullet_advances_each_tick(session: GameSession, ship) -> None:
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+    session.step(TICK_DT)
+    bullet = next(iter(session.bullets.values()))
+    first_x = bullet.x
+
+    session.step(TICK_DT)
+
+    assert session.bullets[bullet.id].x != first_x
+
+
+def test_bullet_expires_after_lifetime(session: GameSession, ship) -> None:
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+    session.step(TICK_DT)
+    bullet_id = next(iter(session.bullets))
+
+    ticks_to_expire = int(game_settings.bullet_lifetime_ms / (TICK_DT * 1000)) + 2
+    for _ in range(ticks_to_expire):
+        session.step(TICK_DT)
+
+    assert bullet_id not in session.bullets
+
+
+def test_bullet_hits_enemy_ship_and_deals_damage(session: GameSession) -> None:
+    session.register("p1", _DummyWebSocket())
+    session.register("p2", _DummyWebSocket())
+    shooter, target = session.ships["p1"], session.ships["p2"]
+    shooter.body.angle = 0.0
+    target.body.position = shooter.body.position + pymunk.Vec2d(
+        game_settings.ship_radius + 5, 0
+    )
+    starting_hp = target.hp
+
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+    session.step(TICK_DT)
+
+    assert target.hp == starting_hp - game_settings.bullet_damage_to_ship
+    assert len(session.bullets) == 0  # consumed on hit, no piercing
+
+
+def test_bullet_cannot_damage_its_own_owner(session: GameSession, ship) -> None:
+    starting_hp = ship.hp
+
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+    for _ in range(5):
+        session.step(TICK_DT)
+
+    assert ship.hp == starting_hp
+
+
+def test_bullet_hits_asteroid_and_deals_damage(session: GameSession, ship) -> None:
+    asteroid = next(iter(session.asteroids.values()))
+    ship.body.position = asteroid.body.position - pymunk.Vec2d(
+        asteroid.radius + game_settings.ship_radius + 5, 0
+    )
+    ship.body.angle = 0.0
+    starting_hp = asteroid.hp
+
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+    session.step(TICK_DT)
+
+    assert asteroid.hp == starting_hp - game_settings.bullet_damage_to_asteroid
+    assert len(session.bullets) == 0
+
+
+def test_bullet_miss_leaves_hp_and_bullet_unchanged(session: GameSession, ship) -> None:
+    ship.body.angle = math.pi  # facing away from every asteroid/ship
+
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+    session.step(TICK_DT)
+
+    assert len(session.bullets) == 1
+
+
+def test_ship_dies_when_hp_reaches_zero_from_bullets(session: GameSession) -> None:
+    session.register("p1", _DummyWebSocket())
+    session.register("p2", _DummyWebSocket())
+    shooter, target = session.ships["p1"], session.ships["p2"]
+    shooter.body.angle = 0.0
+    target.body.position = shooter.body.position + pymunk.Vec2d(
+        game_settings.ship_radius + 5, 0
+    )
+    target.hp = game_settings.bullet_damage_to_ship  # exactly lethal
+
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+    session.step(TICK_DT)
+
+    assert target.hp <= 0
+    assert target.alive is False
+
+
+def test_bullet_does_not_damage_an_already_dead_ship(session: GameSession) -> None:
+    session.register("p1", _DummyWebSocket())
+    session.register("p2", _DummyWebSocket())
+    shooter, target = session.ships["p1"], session.ships["p2"]
+    shooter.body.angle = 0.0
+    target.body.position = shooter.body.position + pymunk.Vec2d(
+        game_settings.ship_radius + 5, 0
+    )
+    target.alive = False
+    target.hp = -999
+
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+    session.step(TICK_DT)
+
+    assert target.hp == -999  # untouched, no-op on already-dead

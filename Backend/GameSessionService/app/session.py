@@ -118,6 +118,55 @@ class GameSession:
             bullet = combat.spawn_bullet(bullet_id, player_id, ship, self._elapsed_ms)
             self.bullets[bullet_id] = bullet
 
+    def _advance_and_expire_bullets(self, dt: float) -> None:
+        expired_ids = []
+        for bullet in self.bullets.values():
+            combat.advance_bullet(bullet, dt)
+            if combat.is_bullet_expired(
+                bullet, self._elapsed_ms, (self._belt_center.x, self._belt_center.y),
+                self._outer_fence_r,
+            ):
+                expired_ids.append(bullet.id)
+        for bullet_id in expired_ids:
+            del self.bullets[bullet_id]
+
+    def _resolve_bullet_collisions(self) -> None:
+        hit_ids = []
+        for bullet in self.bullets.values():
+            start = (bullet.prev_x, bullet.prev_y)
+            end = (bullet.x, bullet.y)
+
+            hit = False
+            for ship in self.ships.values():
+                if ship.id == bullet.owner_id or not ship.alive:
+                    continue
+                if combat.segment_hits_circle(
+                    start, end,
+                    (ship.body.position.x, ship.body.position.y),
+                    game_settings.ship_radius,
+                ):
+                    ship.hp -= game_settings.bullet_damage_to_ship
+                    if ship.hp <= 0:
+                        ship.alive = False
+                    hit = True
+                    break
+            if not hit:
+                for asteroid in self.asteroids.values():
+                    if combat.segment_hits_circle(
+                        start, end,
+                        (asteroid.body.position.x, asteroid.body.position.y),
+                        asteroid.radius,
+                    ):
+                        asteroid.hp -= game_settings.bullet_damage_to_asteroid
+                        hit = True
+                        break
+
+            if hit:
+                hit_ids.append(bullet.id)
+
+        for bullet_id in hit_ids:
+            del self.bullets[bullet_id]
+
     def _clamp_speed(self, body: pymunk.Body, max_speed: float) -> None:
         speed = body.velocity.length
         if speed > max_speed:
@@ -161,6 +210,8 @@ class GameSession:
         self._elapsed_ms += dt * 1000
         self._apply_input()
         self._spawn_bullets()
+        self._advance_and_expire_bullets(dt)
+        self._resolve_bullet_collisions()
         self._apply_drift()
         self.space.step(dt)
 
