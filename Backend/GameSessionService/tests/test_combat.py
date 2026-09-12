@@ -55,8 +55,15 @@ def test_advance_bullet_moves_by_velocity_times_dt_and_tracks_previous_position(
     None
 ):
     bullet = Bullet(
-        id="blt-1", owner_id="p1", x=0.0, y=0.0, vx=100.0, vy=50.0,
-        prev_x=0.0, prev_y=0.0, spawned_at_ms=0.0,
+        id="blt-1",
+        owner_id="p1",
+        x=0.0,
+        y=0.0,
+        vx=100.0,
+        vy=50.0,
+        prev_x=0.0,
+        prev_y=0.0,
+        spawned_at_ms=0.0,
     )
 
     advance_bullet(bullet, dt=0.1)
@@ -69,8 +76,15 @@ def test_advance_bullet_moves_by_velocity_times_dt_and_tracks_previous_position(
 
 def test_bullet_expires_after_lifetime() -> None:
     bullet = Bullet(
-        id="blt-1", owner_id="p1", x=0.0, y=0.0, vx=0.0, vy=0.0,
-        prev_x=0.0, prev_y=0.0, spawned_at_ms=1000.0,
+        id="blt-1",
+        owner_id="p1",
+        x=0.0,
+        y=0.0,
+        vx=0.0,
+        vy=0.0,
+        prev_x=0.0,
+        prev_y=0.0,
+        spawned_at_ms=1000.0,
     )
 
     not_yet = is_bullet_expired(
@@ -92,22 +106,42 @@ def test_bullet_expires_after_lifetime() -> None:
 
 def test_bullet_expires_outside_outer_fence() -> None:
     bullet = Bullet(
-        id="blt-1", owner_id="p1", x=500.0, y=0.0, vx=0.0, vy=0.0,
-        prev_x=500.0, prev_y=0.0, spawned_at_ms=0.0,
+        id="blt-1",
+        owner_id="p1",
+        x=500.0,
+        y=0.0,
+        vx=0.0,
+        vy=0.0,
+        prev_x=500.0,
+        prev_y=0.0,
+        spawned_at_ms=0.0,
     )
 
-    assert is_bullet_expired(
-        bullet, elapsed_ms=1.0, belt_center=(0.0, 0.0), outer_fence_r=400.0
-    ) is True
-    assert is_bullet_expired(
-        bullet, elapsed_ms=1.0, belt_center=(0.0, 0.0), outer_fence_r=600.0
-    ) is False
+    assert (
+        is_bullet_expired(
+            bullet, elapsed_ms=1.0, belt_center=(0.0, 0.0), outer_fence_r=400.0
+        )
+        is True
+    )
+    assert (
+        is_bullet_expired(
+            bullet, elapsed_ms=1.0, belt_center=(0.0, 0.0), outer_fence_r=600.0
+        )
+        is False
+    )
 
 
 def test_bullet_to_state_includes_rotation_from_velocity() -> None:
     bullet = Bullet(
-        id="blt-1", owner_id="p1", x=3.0, y=4.0, vx=1.0, vy=1.0,
-        prev_x=0.0, prev_y=0.0, spawned_at_ms=0.0,
+        id="blt-1",
+        owner_id="p1",
+        x=3.0,
+        y=4.0,
+        vx=1.0,
+        vy=1.0,
+        prev_x=0.0,
+        prev_y=0.0,
+        spawned_at_ms=0.0,
     )
 
     state = bullet_to_state(bullet)

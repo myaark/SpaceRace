@@ -42,7 +42,17 @@ def test_state_message_serializes_ships_list() -> None:
     state = StateMessage(
         tick=1,
         ships=[
-            ShipState(id="p1", x=0, y=0, rotation=0, vx=0, vy=0, hp=100, max_hp=100, alive=True)
+            ShipState(
+                id="p1",
+                x=0,
+                y=0,
+                rotation=0,
+                vx=0,
+                vy=0,
+                hp=100,
+                max_hp=100,
+                alive=True,
+            )
         ],
         asteroids=[],
         bullets=[],
@@ -58,13 +68,20 @@ def test_state_message_serializes_ships_list() -> None:
 
 
 def test_state_message_serializes_asteroids_bullets_and_diffs() -> None:
-    from app.models.messages import AsteroidInit, AsteroidState, BulletState, StateMessage
+    from app.models.messages import (
+        AsteroidInit,
+        AsteroidState,
+        BulletState,
+        StateMessage,
+    )
 
     state = StateMessage(
         tick=1,
         ships=[],
         asteroids=[
-            AsteroidState(id="ast-1", x=0, y=0, rotation=0, vx=0, vy=0, hp=15, max_hp=30)
+            AsteroidState(
+                id="ast-1", x=0, y=0, rotation=0, vx=0, vy=0, hp=15, max_hp=30
+            )
         ],
         bullets=[BulletState(id="blt-1", x=1, y=2, rotation=0.5)],
         asteroids_spawned=[AsteroidInit(id="ast-1-frag0", x=0, y=0, r=34.0)],

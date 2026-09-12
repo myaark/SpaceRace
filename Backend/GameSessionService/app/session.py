@@ -112,7 +112,9 @@ class GameSession:
         self.connections.pop(player_id, None)
         self._spawn_index_by_player.pop(player_id, None)
 
-    def set_input(self, player_id: str, thrust: int, turn: int, fire: bool = False) -> None:
+    def set_input(
+        self, player_id: str, thrust: int, turn: int, fire: bool = False
+    ) -> None:
         self.latest_input[player_id] = {"thrust": thrust, "turn": turn, "fire": fire}
 
     def _apply_input(self) -> None:
@@ -148,7 +150,9 @@ class GameSession:
         for bullet in self.bullets.values():
             combat.advance_bullet(bullet, dt)
             if combat.is_bullet_expired(
-                bullet, self._elapsed_ms, (self._belt_center.x, self._belt_center.y),
+                bullet,
+                self._elapsed_ms,
+                (self._belt_center.x, self._belt_center.y),
                 self._outer_fence_r,
             ):
                 expired_ids.append(bullet.id)
@@ -166,7 +170,8 @@ class GameSession:
                 if ship.id == bullet.owner_id or not ship.alive:
                     continue
                 if combat.segment_hits_circle(
-                    start, end,
+                    start,
+                    end,
                     (ship.body.position.x, ship.body.position.y),
                     game_settings.ship_radius,
                 ):
@@ -178,7 +183,8 @@ class GameSession:
             if not hit:
                 for asteroid in self.asteroids.values():
                     if combat.segment_hits_circle(
-                        start, end,
+                        start,
+                        end,
                         (asteroid.body.position.x, asteroid.body.position.y),
                         asteroid.radius,
                     ):
@@ -315,14 +321,14 @@ class GameSession:
         return StateMessage(
             tick=self.tick_count,
             ships=[ShipState(**ship.to_state()) for ship in self.ships.values()],
-            asteroids=[
-                AsteroidState(**a.to_state()) for a in self.asteroids.values()
-            ],
+            asteroids=[AsteroidState(**a.to_state()) for a in self.asteroids.values()],
             bullets=[
                 BulletState(**combat.bullet_to_state(b)) for b in self.bullets.values()
             ],
             asteroids_spawned=[
-                AsteroidInit(id=a.id, x=a.body.position.x, y=a.body.position.y, r=a.radius)
+                AsteroidInit(
+                    id=a.id, x=a.body.position.x, y=a.body.position.y, r=a.radius
+                )
                 for a in self._asteroids_spawned_this_tick
             ],
             asteroids_removed=list(self._asteroids_removed_this_tick),

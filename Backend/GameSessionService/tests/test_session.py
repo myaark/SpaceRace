@@ -552,7 +552,9 @@ def test_asteroid_fragments_into_two_children_when_hp_reaches_zero(
 
     assert large_id not in session.asteroids
     assert len(session.asteroids) == count_before + 1  # -1 parent, +2 children
-    children = [a for a in session.asteroids.values() if a.id.startswith(f"{large_id}-frag")]
+    children = [
+        a for a in session.asteroids.values() if a.id.startswith(f"{large_id}-frag")
+    ]
     assert len(children) == 2
     assert all(c.tier == "medium" for c in children)
     assert large.body not in session.space.bodies
@@ -595,7 +597,9 @@ def test_ram_damage_applies_on_ship_asteroid_contact(session: GameSession) -> No
     assert ship.hp == starting_hp - game_settings.ram_damage_by_tier["large"]
 
 
-def test_ram_damage_cooldown_prevents_re_damage_every_tick(session: GameSession) -> None:
+def test_ram_damage_cooldown_prevents_re_damage_every_tick(
+    session: GameSession,
+) -> None:
     asteroid = next(a for a in session.asteroids.values() if a.tier == "large")
     asteroid.drift = False
     session.register("p1", _DummyWebSocket())
@@ -605,7 +609,9 @@ def test_ram_damage_cooldown_prevents_re_damage_every_tick(session: GameSession)
     ship.body.position = asteroid.body.position - approach_dir * contact_distance
     ship.body.velocity = (0, 0)
 
-    ticks_within_cooldown = max(1, int(game_settings.ram_cooldown_ms / (TICK_DT * 1000)) - 1)
+    ticks_within_cooldown = max(
+        1, int(game_settings.ram_cooldown_ms / (TICK_DT * 1000)) - 1
+    )
     for _ in range(ticks_within_cooldown):
         session.step(TICK_DT)
         ship.body.position = asteroid.body.position - approach_dir * contact_distance

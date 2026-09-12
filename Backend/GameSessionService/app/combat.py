@@ -24,7 +24,9 @@ class Bullet:
     spawned_at_ms: float
 
 
-def spawn_bullet(bullet_id: str, owner_id: str, ship: Ship, elapsed_ms: float) -> Bullet:
+def spawn_bullet(
+    bullet_id: str, owner_id: str, ship: Ship, elapsed_ms: float
+) -> Bullet:
     angle = ship.body.angle
     direction = pymunk.Vec2d(math.cos(angle), math.sin(angle))
     nose = ship.body.position + direction * game_settings.ship_radius
