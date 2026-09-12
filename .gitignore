@@ -37,7 +37,9 @@ docker-compose.override.yml
 *.log
 logs/
 
-docs/superpowers/
+# --- Superpowers (agent skill scratch/plan artifacts, any depth) ---
+**/superpowers/
+.superpowers/
 
 # --- Git worktrees (agent workspace isolation) ---
 .worktrees/
