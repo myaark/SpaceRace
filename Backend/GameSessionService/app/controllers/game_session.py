@@ -71,7 +71,7 @@ class SessionManager:
                         "Malformed input message on room %s: %r", room_id, raw
                     )
                     continue
-                session.set_input(player_id, message.thrust, message.turn)
+                session.set_input(player_id, message.thrust, message.turn, message.fire)
         except WebSocketDisconnect:
             pass
         finally:

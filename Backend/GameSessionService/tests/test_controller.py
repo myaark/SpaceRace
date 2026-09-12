@@ -171,3 +171,21 @@ async def test_malformed_input_is_ignored_connection_stays_open() -> None:
 
     ws.disconnect()
     await task  # must complete cleanly, not raise
+
+
+@pytest.mark.asyncio
+async def test_fire_input_is_forwarded_to_the_session() -> None:
+    manager = SessionManager()
+    ws = FakeWebSocket()
+    task = asyncio.create_task(manager.handle_connection(ws, "room-1", "p1"))
+    await asyncio.sleep(0.02)
+
+    ws.send_input(json.dumps({"type": "input", "thrust": 0, "turn": 0, "fire": True}))
+    await asyncio.sleep(0.02)
+
+    session = manager._sessions["room-1"]
+    assert session.latest_input["p1"]["fire"] is True
+
+    ws.disconnect()
+    await task
+    manager.remove("room-1")
