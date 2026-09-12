@@ -529,3 +529,105 @@ def test_bullet_does_not_damage_an_already_dead_ship(session: GameSession) -> No
     session.step(TICK_DT)
 
     assert target.hp == -999  # untouched, no-op on already-dead
+
+
+def test_asteroid_fragments_into_two_children_when_hp_reaches_zero(
+    session: GameSession,
+) -> None:
+    large = next(a for a in session.asteroids.values() if a.tier == "large")
+    large.hp = 1
+    large_id = large.id
+    count_before = len(session.asteroids)
+
+    # Force a bullet hit on it: place a ship facing it, one hp of damage.
+    session.register("p1", _DummyWebSocket())
+    ship = session.ships["p1"]
+    ship.body.position = large.body.position - pymunk.Vec2d(
+        large.radius + game_settings.ship_radius + 5, 0
+    )
+    ship.body.angle = 0.0
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+
+    session.step(TICK_DT)
+
+    assert large_id not in session.asteroids
+    assert len(session.asteroids) == count_before + 1  # -1 parent, +2 children
+    children = [a for a in session.asteroids.values() if a.id.startswith(f"{large_id}-frag")]
+    assert len(children) == 2
+    assert all(c.tier == "medium" for c in children)
+    assert large.body not in session.space.bodies
+
+
+def test_small_asteroid_destroyed_outright_with_no_children(
+    session: GameSession,
+) -> None:
+    small = next(a for a in session.asteroids.values() if a.tier == "small")
+    small.hp = 1
+    small_id = small.id
+    count_before = len(session.asteroids)
+
+    session.register("p1", _DummyWebSocket())
+    ship = session.ships["p1"]
+    ship.body.position = small.body.position - pymunk.Vec2d(
+        small.radius + game_settings.ship_radius + 5, 0
+    )
+    ship.body.angle = 0.0
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+
+    session.step(TICK_DT)
+
+    assert small_id not in session.asteroids
+    assert len(session.asteroids) == count_before - 1
+
+
+def test_ram_damage_applies_on_ship_asteroid_contact(session: GameSession) -> None:
+    asteroid = next(a for a in session.asteroids.values() if a.tier == "large")
+    asteroid.drift = False
+    session.register("p1", _DummyWebSocket())
+    ship = session.ships["p1"]
+    approach_dir = pymunk.Vec2d(1, 0)
+    contact_distance = asteroid.radius + game_settings.ship_radius - 1
+    ship.body.position = asteroid.body.position - approach_dir * contact_distance
+    starting_hp = ship.hp
+
+    session.step(TICK_DT)
+
+    assert ship.hp == starting_hp - game_settings.ram_damage_by_tier["large"]
+
+
+def test_ram_damage_cooldown_prevents_re_damage_every_tick(session: GameSession) -> None:
+    asteroid = next(a for a in session.asteroids.values() if a.tier == "large")
+    asteroid.drift = False
+    session.register("p1", _DummyWebSocket())
+    ship = session.ships["p1"]
+    approach_dir = pymunk.Vec2d(1, 0)
+    contact_distance = asteroid.radius + game_settings.ship_radius - 1
+    ship.body.position = asteroid.body.position - approach_dir * contact_distance
+    ship.body.velocity = (0, 0)
+
+    ticks_within_cooldown = max(1, int(game_settings.ram_cooldown_ms / (TICK_DT * 1000)) - 1)
+    for _ in range(ticks_within_cooldown):
+        session.step(TICK_DT)
+        ship.body.position = asteroid.body.position - approach_dir * contact_distance
+
+    damage_taken = ship.max_hp - ship.hp
+    assert damage_taken == game_settings.ram_damage_by_tier["large"]
+
+
+def test_to_broadcast_message_includes_bullets_and_asteroid_diffs(
+    session: GameSession,
+) -> None:
+    session.register("p1", _DummyWebSocket())
+    session.set_input("p1", thrust=0, turn=0, fire=True)
+    session.step(TICK_DT)
+
+    state = session.to_broadcast_message()
+
+    assert len(state.bullets) == len(session.bullets)
+    assert isinstance(state.asteroids_spawned, list)
+    assert isinstance(state.asteroids_removed, list)
+    for ship_state in state.ships:
+        assert hasattr(ship_state, "hp")
+        assert hasattr(ship_state, "alive")
+    for asteroid_state in state.asteroids:
+        assert hasattr(asteroid_state, "hp")

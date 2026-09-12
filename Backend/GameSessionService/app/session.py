@@ -1,5 +1,6 @@
 import logging
 import math
+import random
 
 import pymunk
 from fastapi import WebSocket
@@ -15,7 +16,14 @@ from app.entities import (
     generate_asteroid_layout,
 )
 from app.game_settings import game_settings
-from app.models.messages import AsteroidInit, InitMessage, ShipState, StateMessage
+from app.models.messages import (
+    AsteroidInit,
+    AsteroidState,
+    BulletState,
+    InitMessage,
+    ShipState,
+    StateMessage,
+)
 
 
 class GameSession:
@@ -48,6 +56,21 @@ class GameSession:
             self.space.add(asteroid.body, asteroid.shape)
             self.asteroids[asteroid_id] = asteroid
 
+        self._asteroid_by_shape: dict[pymunk.Shape, Asteroid] = {
+            a.shape: a for a in self.asteroids.values()
+        }
+        self._ship_by_shape: dict[pymunk.Shape, Ship] = {}
+        self._ram_cooldowns: dict[tuple[str, str], float] = {}
+        self._fragment_rng = random.Random()
+        self._asteroids_spawned_this_tick: list[Asteroid] = []
+        self._asteroids_removed_this_tick: list[str] = []
+
+        self.space.on_collision(
+            SHIP_COLLISION_TYPE,
+            ASTEROID_COLLISION_TYPE,
+            pre_solve=self._on_ship_asteroid_contact,
+        )
+
         self.ships: dict[str, Ship] = {}
         self.connections: dict[str, WebSocket] = {}
         self.latest_input: dict[str, dict] = {}
@@ -76,6 +99,7 @@ class GameSession:
         ship = Ship(player_id, (position.x, position.y))
         self.space.add(ship.body, ship.shape)
         self.ships[player_id] = ship
+        self._ship_by_shape[ship.shape] = ship
         self._spawn_index_by_player[player_id] = index
         self.connections[player_id] = websocket
 
@@ -83,6 +107,7 @@ class GameSession:
         ship = self.ships.pop(player_id, None)
         if ship is not None:
             self.space.remove(ship.body, ship.shape)
+            self._ship_by_shape.pop(ship.shape, None)
         self.latest_input.pop(player_id, None)
         self.connections.pop(player_id, None)
         self._spawn_index_by_player.pop(player_id, None)
@@ -167,6 +192,45 @@ class GameSession:
         for bullet_id in hit_ids:
             del self.bullets[bullet_id]
 
+    def _on_ship_asteroid_contact(self, arbiter, space, data) -> bool:
+        ship_shape, asteroid_shape = arbiter.shapes
+        ship = self._ship_by_shape.get(ship_shape)
+        asteroid = self._asteroid_by_shape.get(asteroid_shape)
+        if ship is None or asteroid is None or not ship.alive:
+            return True
+
+        key = (ship.id, asteroid.id)
+        last_hit = self._ram_cooldowns.get(key, float("-inf"))
+        if self._elapsed_ms - last_hit >= game_settings.ram_cooldown_ms:
+            ship.hp -= game_settings.ram_damage_by_tier[asteroid.tier]
+            self._ram_cooldowns[key] = self._elapsed_ms
+            if ship.hp <= 0:
+                ship.alive = False
+        return True
+
+    def _apply_fragmentation(self) -> None:
+        destroyed_ids: list[str] = []
+        spawned: list[Asteroid] = []
+
+        for asteroid in list(self.asteroids.values()):
+            if asteroid.hp > 0:
+                continue
+            destroyed_ids.append(asteroid.id)
+            self.space.remove(asteroid.body, asteroid.shape)
+            self._asteroid_by_shape.pop(asteroid.shape, None)
+            for child in combat.fragment_asteroid(asteroid, self._fragment_rng):
+                self.space.add(child.body, child.shape)
+                self._asteroid_by_shape[child.shape] = child
+                spawned.append(child)
+
+        for asteroid_id in destroyed_ids:
+            del self.asteroids[asteroid_id]
+        for child in spawned:
+            self.asteroids[child.id] = child
+
+        self._asteroids_spawned_this_tick = spawned
+        self._asteroids_removed_this_tick = destroyed_ids
+
     def _clamp_speed(self, body: pymunk.Body, max_speed: float) -> None:
         speed = body.velocity.length
         if speed > max_speed:
@@ -212,6 +276,7 @@ class GameSession:
         self._spawn_bullets()
         self._advance_and_expire_bullets(dt)
         self._resolve_bullet_collisions()
+        self._apply_fragmentation()
         self._apply_drift()
         self.space.step(dt)
 
@@ -250,7 +315,17 @@ class GameSession:
         return StateMessage(
             tick=self.tick_count,
             ships=[ShipState(**ship.to_state()) for ship in self.ships.values()],
-            asteroids=[ShipState(**a.to_state()) for a in self.asteroids.values()],
+            asteroids=[
+                AsteroidState(**a.to_state()) for a in self.asteroids.values()
+            ],
+            bullets=[
+                BulletState(**combat.bullet_to_state(b)) for b in self.bullets.values()
+            ],
+            asteroids_spawned=[
+                AsteroidInit(id=a.id, x=a.body.position.x, y=a.body.position.y, r=a.radius)
+                for a in self._asteroids_spawned_this_tick
+            ],
+            asteroids_removed=list(self._asteroids_removed_this_tick),
         )
 
     async def broadcast(self) -> None:
