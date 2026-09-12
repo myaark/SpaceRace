@@ -6,11 +6,12 @@ VALID_INPUT_VALUES = (-1, 0, 1)
 
 
 class InputMessage(BaseModel):
-    """Incoming websocket message: a player's current thrust/turn input."""
+    """Incoming websocket message: a player's current thrust/turn/fire input."""
 
     type: Literal["input"]
     thrust: int
     turn: int
+    fire: bool = False
 
     @field_validator("thrust", "turn")
     @classmethod
@@ -27,6 +28,27 @@ class ShipState(BaseModel):
     rotation: float
     vx: float
     vy: float
+    hp: int
+    max_hp: int
+    alive: bool
+
+
+class AsteroidState(BaseModel):
+    id: str
+    x: float
+    y: float
+    rotation: float
+    vx: float
+    vy: float
+    hp: int
+    max_hp: int
+
+
+class BulletState(BaseModel):
+    id: str
+    x: float
+    y: float
+    rotation: float
 
 
 class AsteroidInit(BaseModel):
@@ -55,4 +77,7 @@ class StateMessage(BaseModel):
     type: Literal["state"] = "state"
     tick: int
     ships: list[ShipState]
-    asteroids: list[ShipState]
+    asteroids: list[AsteroidState]
+    bullets: list[BulletState]
+    asteroids_spawned: list[AsteroidInit]
+    asteroids_removed: list[str]
