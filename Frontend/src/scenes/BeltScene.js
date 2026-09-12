@@ -49,6 +49,12 @@ export default class BeltScene extends Phaser.Scene {
     super('BeltScene')
   }
 
+  preload() {
+    this.load.image('ship-spaceship', '/assests/spaceship.png')
+    this.load.image('ship-interceptor', '/assests/interceptor-ship.png')
+    this.load.image('ship-scout', '/assests/scout-ship.png')
+  }
+
   create() {
     this.cameras.main.setBackgroundColor(PALETTE.void)
 
@@ -69,7 +75,7 @@ export default class BeltScene extends Phaser.Scene {
     this.playerId = generatePlayerId()
     // Placeholder art shown before our own ship first appears in a state
     // broadcast; the camera follows this until our ship id shows up.
-    this.placeholderShip = new RemoteShip(this, SHIP.x, SHIP.y)
+    this.placeholderShip = new RemoteShip(this, SHIP.x, SHIP.y, this.playerId)
 
     this.gameSocket = new GameSocket(`${GAME_SESSION_WS_BASE_URL}?player_id=${this.playerId}`)
     this.gameSocket.onInit((msg) => {
@@ -83,7 +89,7 @@ export default class BeltScene extends Phaser.Scene {
         seen.add(shipState.id)
         let ship = this.remoteShips.get(shipState.id)
         if (!ship) {
-          ship = new RemoteShip(this, shipState.x, shipState.y)
+          ship = new RemoteShip(this, shipState.x, shipState.y, shipState.id)
           this.remoteShips.set(shipState.id, ship)
           if (shipState.id === this.playerId) {
             this.placeholderShip.destroy()

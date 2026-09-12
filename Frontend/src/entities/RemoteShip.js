@@ -1,45 +1,34 @@
 import Phaser from 'phaser'
 
-// Same hull/thruster look as the original static mockup, now driven by
-// server-authoritative state. No physics of its own — see design spec's
-// non-goals (no client-side prediction).
-const PALETTE = {
-  ship: 0xf5ead8,
-  shipBorder: 0x56633f,
-  thruster: 0xf6a06b,
-}
+// Ship art now comes from the image assets under public/assests, one of
+// three hulls picked per ship id. No physics of its own — see design
+// spec's non-goals (no client-side prediction).
+export const SHIP_TEXTURES = ['ship-spaceship', 'ship-interceptor', 'ship-scout']
 
 const SHIP_SIZE = 66
 
+function pickTexture(id) {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0
+  }
+  return SHIP_TEXTURES[Math.abs(hash) % SHIP_TEXTURES.length]
+}
+
 export default class RemoteShip extends Phaser.GameObjects.Container {
-  constructor(scene, x, y) {
+  constructor(scene, x, y, id) {
     super(scene, x, y)
     scene.add.existing(this)
 
-    const half = SHIP_SIZE / 2
+    const art = scene.add.image(0, 0, pickTexture(id))
+    art.setDisplaySize(SHIP_SIZE, SHIP_SIZE)
 
-    const thruster = scene.add.graphics()
-    thruster.fillStyle(PALETTE.thruster, 1)
-    thruster.fillRoundedRect(-48, -5, 96, 10, 5)
-    thruster.setPosition(38, -52)
-    thruster.setRotation(Phaser.Math.DegToRad(-52))
-
-    const hull = scene.add.graphics()
-    hull.fillStyle(PALETTE.ship, 1)
-    hull.fillRoundedRect(-half, -half, SHIP_SIZE, SHIP_SIZE, 10)
-    hull.lineStyle(2, PALETTE.shipBorder, 1)
-    hull.strokeRoundedRect(-half, -half, SHIP_SIZE, SHIP_SIZE, 10)
-    hull.setRotation(Phaser.Math.DegToRad(45))
-
-    // The thruster flame marks the ship's rear. The server applies thrust
-    // force along local +x (rotation 0) — see GameSessionService's
-    // session.py _apply_input — so rotate the whole art group here until
-    // the point opposite the thruster (the nose) lines up with local +x.
-    // That keeps "up" always visually matching the direction physics
-    // actually pushes the ship.
-    const art = scene.add.container(0, 0, [thruster, hull])
-    const noseAngle = Math.atan2(-52, 38) + Math.PI
-    art.setRotation(-noseAngle)
+    // The art is drawn nose-up. The server applies thrust force along
+    // local +x (rotation 0) — see GameSessionService's session.py
+    // _apply_input — and rotating a nose-up sprite by +90 degrees points
+    // its nose along +x. That keeps "up" in the art always matching the
+    // direction physics actually pushes the ship.
+    art.setRotation(Phaser.Math.DegToRad(90))
 
     this.add(art)
   }
