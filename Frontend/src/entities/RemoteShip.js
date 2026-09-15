@@ -6,6 +6,14 @@ import Phaser from 'phaser'
 export const SHIP_TEXTURES = ['ship-spaceship', 'ship-interceptor', 'ship-scout']
 
 const SHIP_SIZE = 66
+const HP_BAR_WIDTH = 40
+const HP_BAR_HEIGHT = 4
+const HP_BAR_OFFSET_Y = -(SHIP_SIZE / 2 + 10)
+
+const PALETTE = {
+  hpFill: 0xaebf92,
+  hpEmpty: 0x4a4038,
+}
 
 function pickTexture(id) {
   let hash = 0
@@ -20,21 +28,40 @@ export default class RemoteShip extends Phaser.GameObjects.Container {
     super(scene, x, y)
     scene.add.existing(this)
 
-    const art = scene.add.image(0, 0, pickTexture(id))
-    art.setDisplaySize(SHIP_SIZE, SHIP_SIZE)
+    this.art = scene.add.image(0, 0, pickTexture(id))
+    this.art.setDisplaySize(SHIP_SIZE, SHIP_SIZE)
 
     // The art is drawn nose-up. The server applies thrust force along
     // local +x (rotation 0) — see GameSessionService's session.py
     // _apply_input — and rotating a nose-up sprite by +90 degrees points
     // its nose along +x. That keeps "up" in the art always matching the
     // direction physics actually pushes the ship.
-    art.setRotation(Phaser.Math.DegToRad(90))
+    this.art.setRotation(Phaser.Math.DegToRad(90))
+    this.add(this.art)
 
-    this.add(art)
+    // HP bar rotates with the ship container — no independent screen-space
+    // UI layer exists yet in this scene, so this keeps it simple.
+    this.hpBar = scene.add.graphics()
+    this.add(this.hpBar)
+    this.drawHpBar(1)
   }
 
-  applyState({ x, y, rotation }) {
+  drawHpBar(ratio) {
+    this.hpBar.clear()
+    this.hpBar.fillStyle(PALETTE.hpEmpty, 1)
+    this.hpBar.fillRect(-HP_BAR_WIDTH / 2, HP_BAR_OFFSET_Y, HP_BAR_WIDTH, HP_BAR_HEIGHT)
+    this.hpBar.fillStyle(PALETTE.hpFill, 1)
+    this.hpBar.fillRect(-HP_BAR_WIDTH / 2, HP_BAR_OFFSET_Y, HP_BAR_WIDTH * ratio, HP_BAR_HEIGHT)
+  }
+
+  applyState({ x, y, rotation, hp, max_hp, alive }) {
     this.setPosition(x, y)
     this.setRotation(rotation)
+    this.drawHpBar(Phaser.Math.Clamp(hp / max_hp, 0, 1))
+    // A dead ship is never removed server-side (it stays in self.ships,
+    // inert) — mirror that here: dim and gray it out rather than
+    // destroying the sprite, so it keeps reading as "dead but present".
+    this.setAlpha(alive ? 1 : 0.35)
+    this.art.setTint(alive ? 0xffffff : 0x808080)
   }
 }
