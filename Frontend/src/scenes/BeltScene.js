@@ -122,6 +122,13 @@ export default class BeltScene extends Phaser.Scene {
           this.remoteBullets.delete(id)
         }
       }
+      for (const spawned of msg.asteroids_spawned) {
+        this.remoteAsteroids.set(spawned.id, new RemoteAsteroid(this, spawned.x, spawned.y, spawned.r))
+      }
+      for (const removedId of msg.asteroids_removed) {
+        this.remoteAsteroids.get(removedId)?.destroy()
+        this.remoteAsteroids.delete(removedId)
+      }
       for (const asteroidState of msg.asteroids) {
         this.remoteAsteroids.get(asteroidState.id)?.applyState(asteroidState)
       }
