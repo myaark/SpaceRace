@@ -109,9 +109,21 @@ export default class BeltScene extends Phaser.Scene {
       }
     })
 
-    this.lastSentInput = { thrust: 0, turn: 0 }
+    this.lastSentInput = { thrust: 0, turn: 0, fire: false }
     this.cursors = this.input.keyboard.createCursorKeys()
     this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D')
+
+    // Left-click-to-fire. No fire-rate limiting on the client — the
+    // backend has none either (see combat-mechanics plan §"Out of scope");
+    // holding the button sends fire:true once (on the down-transition) and
+    // the server spawns one bullet per tick for as long as it stays true.
+    this.fireHeld = false
+    this.input.on('pointerdown', () => {
+      this.fireHeld = true
+    })
+    this.input.on('pointerup', () => {
+      this.fireHeld = false
+    })
 
     this.setupCamera()
   }
@@ -133,10 +145,15 @@ export default class BeltScene extends Phaser.Scene {
   update() {
     const thrust = this.readThrust()
     const turn = this.readTurn()
+    const fire = this.fireHeld
 
-    if (thrust !== this.lastSentInput.thrust || turn !== this.lastSentInput.turn) {
-      this.lastSentInput = { thrust, turn }
-      this.gameSocket.sendInput({ thrust, turn })
+    if (
+      thrust !== this.lastSentInput.thrust ||
+      turn !== this.lastSentInput.turn ||
+      fire !== this.lastSentInput.fire
+    ) {
+      this.lastSentInput = { thrust, turn, fire }
+      this.gameSocket.sendInput({ thrust, turn, fire })
     }
   }
 

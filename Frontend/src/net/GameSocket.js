@@ -45,8 +45,8 @@ export default class GameSocket {
     this.initHandlers.push(callback)
   }
 
-  sendInput({ thrust, turn }) {
+  sendInput({ thrust, turn, fire }) {
     if (this.ws.readyState !== WebSocket.OPEN) return
-    this.ws.send(JSON.stringify({ type: 'input', seq: this.seq++, thrust, turn }))
+    this.ws.send(JSON.stringify({ type: 'input', seq: this.seq++, thrust, turn, fire }))
   }
 }
