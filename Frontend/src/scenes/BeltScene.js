@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import GameSocket from '../net/GameSocket.js'
 import RemoteShip from '../entities/RemoteShip.js'
 import RemoteAsteroid from '../entities/RemoteAsteroid.js'
+import RemoteBullet from '../entities/RemoteBullet.js'
 
 // Amber-phosphor palette, ported from the "Belt run HUD" design (variant 1a).
 const PALETTE = {
@@ -66,6 +67,7 @@ export default class BeltScene extends Phaser.Scene {
     // Asteroid layout (position + radius) is server-generated, not a
     // hardcoded local constant — populated once the "init" message arrives.
     this.remoteAsteroids = new Map()
+    this.remoteBullets = new Map()
 
     // Ships are keyed by the player_id the server assigned them (see
     // ShipState.id) — a room can hold more than one independently
@@ -102,6 +104,22 @@ export default class BeltScene extends Phaser.Scene {
         if (!seen.has(id)) {
           ship.destroy()
           this.remoteShips.delete(id)
+        }
+      }
+      const seenBullets = new Set()
+      for (const bulletState of msg.bullets) {
+        seenBullets.add(bulletState.id)
+        let bullet = this.remoteBullets.get(bulletState.id)
+        if (!bullet) {
+          bullet = new RemoteBullet(this, bulletState.x, bulletState.y, bulletState.rotation)
+          this.remoteBullets.set(bulletState.id, bullet)
+        }
+        bullet.applyState(bulletState)
+      }
+      for (const [id, bullet] of this.remoteBullets) {
+        if (!seenBullets.has(id)) {
+          bullet.destroy()
+          this.remoteBullets.delete(id)
         }
       }
       for (const asteroidState of msg.asteroids) {
